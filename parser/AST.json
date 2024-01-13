@@ -1,0 +1,116 @@
+{
+  "type": "ProgramContext",
+  "children": [
+    {
+      "type": "FunctionContext",
+      "children": [
+        {
+          "type": "Var_typeContext",
+          "children": [
+            {
+              "type": "Terminal",
+              "text": "int"
+            }
+          ]
+        },
+        {
+          "type": "Terminal",
+          "text": "main"
+        },
+        {
+          "type": "Terminal",
+          "text": "("
+        },
+        {
+          "type": "Terminal",
+          "text": ")"
+        },
+        {
+          "type": "Terminal",
+          "text": "{"
+        },
+        {
+          "type": "StatementContext",
+          "children": [
+            {
+              "type": "Call_func_statmContext",
+              "children": [
+                {
+                  "type": "Terminal",
+                  "text": "printf"
+                },
+                {
+                  "type": "Terminal",
+                  "text": "("
+                },
+                {
+                  "type": "Actual_argsContext",
+                  "children": [
+                    {
+                      "type": "Eval_exprContext",
+                      "children": [
+                        {
+                          "type": "Const_valContext",
+                          "children": [
+                            {
+                              "type": "Terminal",
+                              "text": "\"Hello, World!\\n\""
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "Terminal",
+                  "text": ")"
+                }
+              ]
+            },
+            {
+              "type": "Terminal",
+              "text": ";"
+            }
+          ]
+        },
+        {
+          "type": "StatementContext",
+          "children": [
+            {
+              "type": "Return_statmContext",
+              "children": [
+                {
+                  "type": "Terminal",
+                  "text": "return"
+                },
+                {
+                  "type": "Eval_exprContext",
+                  "children": [
+                    {
+                      "type": "Const_valContext",
+                      "children": [
+                        {
+                          "type": "Terminal",
+                          "text": "0"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Terminal",
+              "text": ";"
+            }
+          ]
+        },
+        {
+          "type": "Terminal",
+          "text": "}"
+        }
+      ]
+    }
+  ]
+}
