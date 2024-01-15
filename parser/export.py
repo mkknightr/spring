@@ -4,7 +4,7 @@ from CLexer import CLexer
 from CParser import CParser
 from CParserVisitor import CParserVisitor
 from antlr4.tree.Trees import Trees 
-from sementic import sementicVisitor
+from semantic import semanticVisitor
 
 
 def format_tree(node, indent=""):
@@ -49,7 +49,7 @@ class JsonExportVisitor(CParserVisitor):
             return aggregate + [next_result]
         return aggregate
 
-input_stream = FileStream("./test/hello.c")
+input_stream = FileStream("/Users/kni/projects/spring/parser/test/hello.c")
 lexer = CLexer(input_stream)
 stream = CommonTokenStream(lexer)
 
@@ -78,9 +78,9 @@ visitor = JsonExportVisitor()
 json_tree = visitor.visit(tree)
 json_str = json.dumps(json_tree, indent=2)
 
-sementicAnalizer = sementicVisitor() 
-sementicAnalizer.visit(tree)
-
+semanticAnalizer = semanticVisitor() 
+semanticAnalizer.visit(tree)
+semanticAnalizer.save("/Users/kni/projects/spring/parser/test/hello.ll")
 
 with open('AST.json', 'w') as f:
     f.write(json_str)
