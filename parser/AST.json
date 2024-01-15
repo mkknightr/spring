@@ -54,7 +54,7 @@
                           "children": [
                             {
                               "type": "Terminal",
-                              "text": "\"Hello, World!\\n\""
+                              "text": "\"Hello, World!\""
                             }
                           ]
                         }
