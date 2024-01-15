@@ -38,7 +38,13 @@ class semanticVisitor(CParserVisitor):
         self.m_cur_function = '' 
         self.m_state = 0 
 
-        self.m_symblol_table = SymbolTable() 
+        self.m_symblol_table = SymbolTable()
+        self.Constant = -1; 
+
+    def getConstantIndex(self):
+        self.Constant += 1 
+        return self.Constant
+
 
 
     # Visit a parse tree produced by CParser#program.
@@ -108,13 +114,10 @@ class semanticVisitor(CParserVisitor):
             if add_item_result != "ok":
                 raise SemanticError(ctx=ctx, msg=add_item_result)
 
-        self.m_symblol_table.EnterScope() 
         for i in range(ctx.getChildCount()): 
             i_child = ctx.getChild(i)
             if isinstance(i_child, CParser.StatementContext): 
                 self.visit(i_child)
-        self.m_symblol_table.QuitScope()
-
         self.m_cur_function = ''
         self.Blocks.pop() 
         self.Builders.pop() 
@@ -203,8 +206,7 @@ class semanticVisitor(CParserVisitor):
             return f"function {self.m_cur_function} return void "
         else: 
             return_value = self.visit(ctx.getChild(1))
-            print(return_value)
-            self.Builders[-1].ret(ir.Constant(int32_t, return_value))
+            self.Builders[-1].ret(return_value)
             return f"function {self.m_cur_function} return {return_value}"
 
     # Visit a parse tree produced by CParser#declare_var_statm.
@@ -217,15 +219,56 @@ class semanticVisitor(CParserVisitor):
         var_type (MULTIPLY)? ID ASSIGN ( eval_expr ) 
         """
         var_type = self.visit(ctx.getChild(0))
-        
-
-        return self.visitChildren(ctx)
-
+        if ctx.getChild(1).getText() != "*":
+            var_id = ctx.getChild(1).getText() 
+            if self.m_symblol_table.InGlobalScope(): 
+                llvmVar = ir.GlobalVariable(self.Module, var_type, name=var_id)
+                llvmVar.linkage = 'internal'
+            else: 
+                llvmBuiler = self.Builders[-1] 
+                llvmVar = llvmBuiler.alloca(var_type, name=var_id)
+            symbolVar = {} 
+            symbolVar["type"] = var_type
+            symbolVar["name"] = llvmVar
+            add_item_result = self.m_symblol_table.AddItem(var_id, symbolVar)
+            if add_item_result != "ok": 
+                raise SemanticError(msg=f"failed to add variable {var_id} to symbol table")
+            if ctx.getChild(2).getText() == "=":
+                var_value = self.visit(ctx.getChild(3))
+                if self.m_symblol_table.InGlobalScope():
+                    llvmVar.initializer = ir.Constant(var_value['type'], var_value['name'].constant)
+                else: 
+                    # TODO 在这里后续可以拓展关于强制类型转换的内容
+                    if var_type != var_value.type:
+                        raise SemanticError(msg=f"varibale type mismatches in assignment statement",ctx=ctx)
+                    else: 
+                        llvmVar.initializer = var_value
+                return 
+            elif ctx.getChild(2).getText() == "[": 
+                #TODO 在这里可以拓展初始化数组变量 目前暂时并不支持
+                pass
+            else: 
+                raise SemanticError(msg=Configuration.ERROR_UPEXPECTED, ctx=ctx) 
+        else: 
+            # TODO 在这里后续可以拓展关于指针类型的内容，目前暂时不支持
+            pass
+        return 
 
     # Visit a parse tree produced by CParser#assign_statm.
     def visitAssign_statm(self, ctx:CParser.Assign_statmContext):
         print("---- VISIT Assign_statm ----") 
-        return self.visitChildren(ctx)
+        """
+        assign_statm : eval_expr ASSIGN ( eval_expr );
+        """
+        llvmBuiler = self.Builders[-1]
+        var_id = ctx.getChild(0).getText() 
+        if self.m_symblol_table.exist(var_id): 
+            var_value = self.visit(ctx.getChild(2))
+            llvmVar = self.m_symblol_table.GetItem(var_id)
+            llvmBuiler.store(var_value['name'], llvmVar)
+        else: 
+            raise SemanticError(msg=f"Cannot detect definition for variable {var_id}", ctx=ctx)
+        return ir.Constant(var_value)
 
 
     # Visit a parse tree produced by CParser#call_func_statm.
@@ -236,18 +279,27 @@ class semanticVisitor(CParserVisitor):
         """
         self.m_symblol_table.display() 
         if ctx.getChild(0).getText() == "printf": 
-            printf = ir.Function(self.Module, printf_function_type, name="printf")
+            if 'printf' in self.Functions: 
+                printf = self.Functions['printf']
+            else:   
+                printf = ir.Function(self.Module, printf_function_type, name="printf")
+                self.Functions['printf'] = printf 
             if ctx.getChild(2).getText() != ")": 
                 printf_str = self.visit(ctx.getChild(2))
                 # Call printf to print the string
                 self.Builders[-1].call(printf, [printf_str.gep([ir.Constant(int32_t, 0),
-                                     ir.Constant(int32_t, 0)])])
+                                    ir.Constant(int32_t, 0)])])
                 return f"call function statement called printf function"
             else: 
                 raise SemanticError(msg="printf function calling should have argument at least one", ctx=ctx)
         # TODO: 这里可以增加更多的库函数调用如scanf, strlen等等
-        else: 
-            print("TO DO") 
+        else:
+            function_name = ctx.getChild(0).getText()
+            if function_name in self.Functions: 
+                # TODO : call the function and pass the actual_args 
+                pass
+            else: 
+                raise SemanticError(msg=f"Undefined function {function_name}", ctx=ctx); 
             return
 
     # Visit a parse tree produced by CParser#condition_statm.
@@ -274,6 +326,27 @@ class semanticVisitor(CParserVisitor):
             statement* 
         RBRACE
         """
+        self.m_symblol_table.EnterScope() 
+        llvmBuiler = self.Builders[-1]
+        while_statm_condition = llvmBuiler.append_basic_block()
+        while_statm_body = llvmBuiler.append_basic_block() 
+        while_statm_end = llvmBuiler.append_basic_block() 
+
+        llvmBuiler.branch(while_statm_condition)
+        self.Blocks.pop()
+        self.Builders.pop()
+        self.Blocks.append(while_statm_condition)
+        self.Builders.append(ir.IRBuilder(while_statm_condition))
+
+        condition_result = self.visit(ctx.getChild(2))
+        self.Builders[-1].cbranch(condition_result['name'], while_statm_body, while_statm_end)
+
+        self.Blocks.pop()
+        self.Builders.pop()
+        self.Blocks.append(while_statm_body)
+        self.Builders.append(ir.IRBuilder(while_statm_body))
+
+
         return self.visitChildren(ctx)
 
 
@@ -319,24 +392,24 @@ class semanticVisitor(CParserVisitor):
         """
         const_type =  ctx.getChild(0).getSymbol().type
         if const_type == CLexer.INT: 
-            return int(ctx.getText())
+            return ir.Constant(int32_t, int(ctx.getText()))
         elif const_type == CLexer.STRING: 
             string_literal = ctx.getText().replace('\\n', '\n') # some quit bothering problem 
             normalized_string = string_literal[1:-1] # throw the ""
             normalized_string += '\0' # null terminated 
             ir_string = ir.GlobalVariable(self.Module, ir.ArrayType(int8_t, len(normalized_string)),
-                                             name="printf_str")
+                                             name=".str%d"%(self.getConstantIndex()))
             ir_string.linkage = 'internal'
             ir_string.global_constant = True
             ir_string.initializer = ir.Constant(ir.ArrayType(int8_t,  len(normalized_string)),
                                     bytearray(normalized_string, 'utf-8'))
             return ir_string
         elif const_type == CLexer.FLOAT: 
-            return float(ctx.getText())
+            return ir.Constant(float_t, float(ctx.getText()))
         elif const_type == CLexer.CHAR: 
-            return ctx.getText()[0]
+            return ir.Constant(int8_t, ctx.getText()[0])
         elif const_type == CLexer.ESCAPE_CHAR: 
-            return ctx.getText()[0] 
+            return ir.Constant(int8_t, ctx.getText()[0]) 
         else: 
             raise SemanticError(msg="! Unexpected error when analizing const_val ")
 

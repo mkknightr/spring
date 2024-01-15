@@ -1,10 +1,6 @@
-import json
 from antlr4 import *
 from CLexer import CLexer
 from CParser import CParser
-from CParserVisitor import CParserVisitor
-from antlr4.tree.Trees import Trees
-from export import JsonExportVisitor 
 from semantic import semanticVisitor
 import sys 
 CFile = "/Users/kni/projects/spring/parser/test/hello.c"
@@ -25,7 +21,6 @@ def lexerize(filePath):
     print("="*60) 
 
     for token in token_stream.tokens:
-        token_type = token.type
         print("{:<10} {:<20} {:<15} {:<15}".format(
             CLexer.symbolicNames[token.type], 
             token.text, 
@@ -44,17 +39,6 @@ if __name__ == "__main__":
     parser = CParser(token_stream)
     tree = parser.program()
 
-    tree_str = Trees.toStringTree(tree,None,  parser)
-
-
-    visitor = JsonExportVisitor()
-    json_tree = visitor.visit(tree)
-    json_str = json.dumps(json_tree, indent=2)
-
     semanticAnalizer = semanticVisitor() 
     semanticAnalizer.visit(tree)
-    semanticAnalizer.save("/Users/kni/projects/spring/parser/test/hello.ll")
-
-
-    with open('AST.json', 'w') as f:
-        f.write(json_str)
+    semanticAnalizer.save(CFile.split('.')[0] + ".ll")
