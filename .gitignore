@@ -4,8 +4,9 @@
 */note*
 __pycache__/
 .vscode/
-*.ll
+*/.ll
 AST.json
+parser/test/**
 test/
 *.out
 runtest.py

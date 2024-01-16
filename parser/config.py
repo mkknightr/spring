@@ -11,3 +11,11 @@ class Configuration:
     ERROR_UPEXPECTED = "Unexpected error encountered"
 
 
+class ExprType: 
+    """
+    eval_type to mark in the return value of eval_expr 
+    """
+    CONST_EXPR = 0
+    ID_EXPR = 1
+    ARRAY_ITEM_EXPR = 2
+    VAR_EXPR = 3

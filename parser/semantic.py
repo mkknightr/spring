@@ -2,7 +2,7 @@ from CParserVisitor import CParserVisitor
 from CLexer import CLexer
 from llvmlite import ir 
 from antlr4 import *
-from config import Configuration
+from config import Configuration, ExprType
 from symbolTable import SymbolTable
 from Error import SemanticError
 
@@ -180,20 +180,17 @@ class semanticVisitor(CParserVisitor):
 
         """
         llvmBuiler = self.Builders[-1]
-        if ctx.getChildCount() == 1: 
-            return [self.visitChildren(ctx)]
-        else:
-            actual_args_list = [] 
-            for i in range(ctx.getChildCount()): 
-                i_child = ctx.getChild(i)
-                if isinstance(i_child, CParser.Eval_exprContext):
-                    return_set = self.visit(i_child)
-                    if type(return_set) is dict:
-                        llvmValue = llvmBuiler.load(return_set['value'])  
-                        actual_args_list.append(llvmValue)
-                    else: 
-                        actual_args_list.append(return_set)
-            return actual_args_list
+        actual_args_list = [] 
+        for i in range(ctx.getChildCount()): 
+            i_child = ctx.getChild(i)
+            if isinstance(i_child, CParser.Eval_exprContext):
+                return_set = self.visit(i_child)
+                if return_set['meta'] == ExprType.CONST_EXPR: 
+                    actual_args_list.append(return_set['value'])
+                else: 
+                    value = llvmBuiler.load(return_set['value'])
+                    actual_args_list.append(value)
+        return actual_args_list
 
 
     # Visit a parse tree produced by CParser#statement.
@@ -226,7 +223,7 @@ class semanticVisitor(CParserVisitor):
             return f"function {self.m_cur_function} return void "
         else: 
             return_value = self.visit(ctx.getChild(1))
-            self.Builders[-1].ret(return_value)
+            self.Builders[-1].ret(return_value['value'])
             return f"function {self.m_cur_function} return {return_value}"
 
     # Visit a parse tree produced by CParser#declare_var_statm.
@@ -243,8 +240,8 @@ class semanticVisitor(CParserVisitor):
             var_id = ctx.getChild(1).getText() 
             if ctx.getChildCount() < 3 or ctx.getChild(2).getText() == "=" : 
                 if self.m_symblol_table.InGlobalScope(): 
-                    llvmVar = ir.GlobalVariable(self.Module, var_type, name=var_id)
-                    llvmVar.linkage = 'internal'
+                    # TODO 本次不涉及到全局变量 暂时搁置
+                    return
                 else: 
                     llvmBuiler = self.Builders[-1] 
                     llvmVar = llvmBuiler.alloca(var_type, name=var_id)
@@ -255,17 +252,23 @@ class semanticVisitor(CParserVisitor):
                 if add_item_result != "ok": 
                     raise SemanticError(msg=f"failed to add variable {var_id} to symbol table")
                 if ctx.getChildCount() < 3: 
-                    return llvmVar
+                    return
                 elif ctx.getChild(2).getText() == "=":
-                    var_value = self.visit(ctx.getChild(3))
+                    return_set = self.visit(ctx.getChild(3))
+                    return_value = return_set['value']
+                    if return_set['meta'] == ExprType.CONST_EXPR or return_set['meta'] == ExprType.VAR_EXPR: 
+                        value = return_value
+                    else: 
+                        value = llvmBuiler.load(return_value)
                     if self.m_symblol_table.InGlobalScope():
-                        llvmVar.initializer = ir.Constant(var_value['type'], var_value['name'].constant)
+                        # TODO: 本次并不会涉及到全局变量 暂时搁置
+                        return
                     else: 
                         # TODO 在这里后续可以拓展关于强制类型转换的内容
-                        if var_type != var_value.type:
+                        if var_type != value.type:
                             raise SemanticError(msg=f"varibale type mismatches in assignment statement",ctx=ctx)
                         else: 
-                            llvmBuiler.store(var_value, llvmVar)
+                            llvmBuiler.store(value, llvmVar)
                             return
                 else: 
                     raise SemanticError(msg=f"Unexpected error", ctx=ctx)     
@@ -273,14 +276,14 @@ class semanticVisitor(CParserVisitor):
                     array_size = int(ctx.getChild(3).getText())
                     array_type = ir.ArrayType(int32_t, array_size)
                     llvmBuiler = self.Builders[-1]
-                    llvmVar = llvmBuiler.alloca(array_type, name="array")
+                    llvmVar = llvmBuiler.alloca(array_type, name=f"{var_id}.array")
                     symbolVar = {} 
                     symbolVar["type"] = array_type
                     symbolVar["name"] = llvmVar
                     add_item_result = self.m_symblol_table.AddItem(var_id, symbolVar)
                     if add_item_result != "ok": 
                         raise SemanticError(msg=f"failed to add variable {var_id} to symbol table")
-                    return llvmVar
+                    return
             else: 
                 raise SemanticError(msg=Configuration.ERROR_UPEXPECTED, ctx=ctx) 
         else: 
@@ -295,23 +298,18 @@ class semanticVisitor(CParserVisitor):
         assign_statm : eval_expr ASSIGN ( eval_expr );
         """
         llvmBuiler = self.Builders[-1]
-        var_id = ctx.getChild(0).getText() 
-        ptr_id = ctx.getChild(0).getText()[1:]
-        var_value = self.visit(ctx.getChild(2))
-        if self.m_symblol_table.exist(var_id): 
-            llvmVar = self.m_symblol_table.GetItem(var_id)
-            llvmBuiler.store(var_value, llvmVar['name'])
-        elif self.m_symblol_table.exist(ptr_id):
-            llvmVar = self.m_symblol_table.GetItem(ptr_id)
-            llvmValue = llvmBuiler.load(llvmVar['name'])
-            llvmBuiler.store(var_value, llvmValue)
+        left = self.visit(ctx.getChild(0))
+        right = self.visit(ctx.getChild(2))
+        if right['meta'] == ExprType.CONST_EXPR or right['meta'] == ExprType.VAR_EXPR: 
+            right_value = right['value'] 
         else: 
-            return_set = self.visit(ctx.getChild(0))
-            if return_set['flag'] == "array": 
-                llvmBuiler.store(var_value, return_set['value'])
-            else: 
-                raise SemanticError(msg=f"Cannot detect definition for variable {ptr_id} or {var_id}", ctx=ctx)
-        return var_value
+            right_value = llvmBuiler.load(right['value'])
+
+        if left['meta'] == ExprType.CONST_EXPR: 
+            raise SemanticError(msg=f"assign object mush be a left value, {ctx.getChild(0).getText()} can not", ctx=ctx)
+        llvmBuiler.store(right_value, left['value']) 
+        
+        return
 
 
     # Visit a parse tree produced by CParser#call_func_statm.
@@ -630,7 +628,10 @@ class semanticVisitor(CParserVisitor):
         """
         const_type =  ctx.getChild(0).getSymbol().type
         if const_type == CLexer.INT: 
-            return ir.Constant(int32_t, int(ctx.getText()))
+            return { 
+                'value': ir.Constant(int32_t, int(ctx.getText())), 
+                'meta': ExprType.CONST_EXPR
+                } 
         elif const_type == CLexer.STRING: 
             string_literal = ctx.getText().replace('\\n', '\n') # some quit bothering problem 
             normalized_string = string_literal[1:-1] # throw the ""
@@ -641,14 +642,26 @@ class semanticVisitor(CParserVisitor):
             ir_string.global_constant = True
             ir_string.initializer = ir.Constant(ir.ArrayType(int8_t,  len(normalized_string)),
                                     bytearray(normalized_string, 'utf-8'))
-            ir_string_ptr = self.Builders[-1].bitcast(ir_string, ir.IntType(8).as_pointer())
-            return ir_string_ptr
+            ir_string_ptr = self.Builders[-1].bitcast(ir_string, int8_t.as_pointer())
+            return { 
+                'value': ir_string_ptr, 
+                'meta': ExprType.CONST_EXPR
+            }
         elif const_type == CLexer.FLOAT: 
-            return ir.Constant(float_t, float(ctx.getText()))
+            return { 
+                'value': ir.Constant(float_t, float(ctx.getText())), 
+                'meta': ExprType.CONST_EXPR
+            }
         elif const_type == CLexer.CHAR: 
-            return ir.Constant(int8_t, ctx.getText()[0])
+            return {
+                'value': ir.Constant(int8_t, ctx.getText()[0]), 
+                'meta': ExprType.CONST_EXPR
+            }
         elif const_type == CLexer.ESCAPE_CHAR: 
-            return ir.Constant(int8_t, ctx.getText()[0]) 
+            return { 
+                'value': ir.Constant(int8_t, ctx.getText()[0]), 
+                'meta': ExprType.CONST_EXPR
+            }
         else: 
             raise SemanticError(msg="! Unexpected error when analizing const_val ")
 
@@ -670,7 +683,10 @@ class semanticVisitor(CParserVisitor):
                     llvmVar = self.m_symblol_table.GetItem(var_id)
                 else: 
                     raise SemanticError(msg=f"variable Undefined {var_id}", ctx=ctx)
-                return llvmBuiler.load(llvmVar['name'])
+                return { 
+                    'value': llvmVar['name'], 
+                    'meta': ExprType.ID_EXPR
+                }
             else: 
                 raise SemanticError(msg=f"Unexpected error when trying to evaluate expr {child.getText()}", ctx=ctx)
 
@@ -678,36 +694,43 @@ class semanticVisitor(CParserVisitor):
             if ctx.getChildCount() == 2: # 只有两个元素 说明是以表达式开头的自增或自减
                 """eval_expr SELF_INC       eval_expr SELF_DEC   
                 """
+                return_set = self.visit(ctx.getChild(0))
+                if return_set['meta'] != ExprType.ID_EXPR and return_set['meta'] != ExprType.ARRAY_ITEM_EXPR:
+                    raise SemanticError(msg=f"Only ID or Array item can be inc. or dec. {ctx.getChild(0).getText()} Can not")
+                return_value = return_set['value']
+                llvmBuiler = self.Builders[-1]
+                llvmValue = llvmBuiler.load(return_value)
                 operator = ctx.getChild(1).getSymbol().type
                 if operator == CLexer.SELF_INC: 
-                    llvmBuiler = self.Builders[-1]
-                    var_id = ctx.getChild(0).getText() 
-                    if self.m_symblol_table.exist(var_id): 
-                        llvmVar = self.m_symblol_table.GetItem(var_id)
-                    else: 
-                        raise SemanticError(msg=f"can not find ID for {var_id}", ctx=ctx)
-                    llvmValue = llvmBuiler.load(llvmVar['name'])
                     llvmNewValue = llvmBuiler.add(llvmValue, ir.Constant(int32_t, 1))
-                    llvmBuiler.store(llvmNewValue, llvmVar['name'])
-                    return llvmValue
                 elif operator == CLexer.SELF_DEC: 
-                    llvmBuiler = self.Builders[-1]
-                    var_id = ctx.getChild(0).getText() 
-                    if self.m_symblol_table.exist(var_id): 
-                        llvmVar = self.m_symblol_table.GetItem(var_id)
-                    else: 
-                        raise SemanticError(msg=f"can not find ID for {var_id}", ctx=ctx)
-                    llvmValue = llvmBuiler.load(llvmVar['name'])
                     llvmNewValue = llvmBuiler.sub(llvmValue, ir.Constant(int32_t, 1))
-                    llvmBuiler.store(llvmNewValue, llvmVar['name'])
-                    return llvmValue
                 else: 
                     raise SemanticError(msg=f"Undefined operator {operator}", ctx=ctx)
+                llvmBuiler.store(llvmNewValue, return_value)
+                return { 
+                    'value': ir.Constant(return_value.pointee, llvmValue), 
+                    'meta': ExprType.CONST_EXPR
+                }
+            
+
             if isinstance(ctx.getChild(2), CParser.Eval_exprContext): # 如果是二元表达式
-                val1 = self.visit(ctx.getChild(0))
-                val2 = self.visit(ctx.getChild(2))
+                return_set1 = self.visit(ctx.getChild(0))
+                return_set2 = self.visit(ctx.getChild(2))
+
                 operator = ctx.getChild(1).getSymbol().type
                 llvmBuiler = self.Builders[-1]
+                var1 = return_set1['value']
+                var2 = return_set2['value']
+                if return_set1['meta'] == ExprType.CONST_EXPR:
+                    val1 = var1
+                else: 
+                    val1 = llvmBuiler.load(var1)
+                if return_set2['meta'] == ExprType.CONST_EXPR: 
+                    val2 = var2
+                else: 
+                    val2 = llvmBuiler.load(var2)
+
                 if operator == CLexer.MULTIPLY: 
                     # TODO: 测试文件中暂时涉及不到乘法表达式
                     return None
@@ -718,9 +741,15 @@ class semanticVisitor(CParserVisitor):
                     # TODO: 测试文件中暂时涉及不到取模表达式
                     return None
                 elif operator == CLexer.PLUS:
-                    return llvmBuiler.add(val1, val2)
+                    return {
+                        'value': llvmBuiler.add(val1, val2), 
+                        'meta': ExprType.CONST_EXPR
+                    }
                 elif operator == CLexer.MINUS:
-                    return llvmBuiler.sub(val1, val2)
+                    return { 
+                        'value': llvmBuiler.sub(val1, val2), 
+                        'meta': ExprType.CONST_EXPR
+                    }
                 elif operator == CLexer.SHL:
                     # TODO: 测试文件中暂时涉及不到移位表达式
                     return None
@@ -729,7 +758,10 @@ class semanticVisitor(CParserVisitor):
                     return None
                 elif operator == CLexer.GREATER or operator == CLexer.GREATER_EQUAL or operator == CLexer.LESS \
                     or operator == CLexer.LESS_EQUAL or operator == CLexer.EQUAL or operator == CLexer.NOT_EQUAL:
-                    return llvmBuiler.icmp_signed(ctx.getChild(1).getText(), val1, val2)
+                    return { 
+                        'value': llvmBuiler.icmp_signed(ctx.getChild(1).getText(), val1, val2), 
+                        'meta': ExprType.CONST_EXPR
+                    }
                 elif operator == CLexer.OP_AND: 
                     # TODO: 测试文件中暂时涉及不到位级操作
                     return None
@@ -746,32 +778,37 @@ class semanticVisitor(CParserVisitor):
                     # TODO: 测试文件中暂时涉及不到逻辑操作 
                     return None 
                 elif operator == CLexer.ASSIGN: 
-                    llvmBuiler = self.Builders[-1]
-                    var_id = ctx.getChild(0).getText() 
-                    if self.m_symblol_table.exist(var_id): 
-                        llvmVar = self.m_symblol_table.GetItem(var_id)
+                    if return_set1['meta'] != ExprType.ID_EXPR and return_set1['meta'] != ExprType.ARRAY_ITEM_EXPR: 
+                        raise SemanticError(msg=f"assigned object must be a left value, {ctx.getChild(0).getText()} is not.", ctx=ctx)
                     else: 
-                        raise SemanticError(msg=f"can not find ID for {var_id}", ctx=ctx)
-                    llvmBuiler.store(ir.Constant(llvmVar["type"], val2), llvmVar)
-                    return val2
+                        llvmBuiler.store(ir.Constant(var2.pointee, val2), var1)
+                        return {
+                            'value': ir.Constant(var2.pointee, var2), 
+                            'meta': ExprType.CONST_EXPR
+                        }
                 else: 
                     raise SemanticError(msg=f"Undefined operator {operator}", ctx=ctx)
             else:
                 raise SemanticError(msg=f"Unexpected error for eval_expr ", ctx=ctx)
-        else: 
+        else: # 如果不以表达式开头
             mark = ctx.getChild(0).getSymbol().type
             if mark == CLexer.ID: 
                 var_id = ctx.getChild(0).getText()
                 type_mark = ctx.getChild(1).getText()
                 if type_mark == "[": # 说明这一个表达式访问的是数组的值
-                    index = self.visit(ctx.getChild(2))
+                    return_set = self.visit(ctx.getChild(2))
+                    return_value = return_set['value']
+                    llvmBuiler = self.Builders[-1]
+                    if return_set['meta'] == ExprType.CONST_EXPR: 
+                        index_value = return_value
+                    else: 
+                        index_value = llvmBuiler.load(return_value)
                     if self.m_symblol_table.exist(var_id):
                         llvmVar = self.m_symblol_table.GetItem(var_id)
-                        llvmBuiler = self.Builders[-1]
-                        llvmvalue = llvmBuiler.gep(llvmVar['name'], [ir.Constant(int32_t, 0), index], inbounds=True)
+                        llvmvalue = llvmBuiler.gep(llvmVar['name'], [ir.Constant(int32_t, 0), index_value])
                         return {
                             'value': llvmvalue, 
-                            'flag': "array", 
+                            'meta': ExprType.ARRAY_ITEM_EXPR, 
                             } 
                     else: 
                         raise SemanticError(msg=f"undefined array {var_id}", ctx=ctx)
@@ -789,19 +826,24 @@ class semanticVisitor(CParserVisitor):
                 # TODO 测试之外
                 return None
             elif mark == CLexer.MULTIPLY: 
-                var_id = ctx.getChild(1).getText()
-                if self.m_symblol_table.exist(var_id): 
-                    llvmVar = self.m_symblol_table.GetItem(var_id)
+                return_set = self.visit(ctx.getChild(1))
+                if return_set['meta'] != ExprType.ID_EXPR: 
+                    raise SemanticError(msg=f"only id can be dereferenced, {ctx.getChild(1).getText()} can not", ctx=ctx)
+                else: 
                     llvmBuiler = self.Builders[-1]
-                    ptr =  llvmBuiler.load(llvmVar['name'])
-                    value = llvmBuiler.load(ptr)
-                    return value
+                    ptr =  llvmBuiler.load(return_set['value'])
+                    return { 
+                        'value': ptr, 
+                        'meta': ExprType.ID_EXPR
+                    }
             elif mark == CLexer.OP_AND: 
-                var_id = ctx.getChild(1).getText()
-                if self.m_symblol_table.exist(var_id): 
-                    llvmVar = self.m_symblol_table.GetItem(var_id)
-                    return llvmVar['name']
-                pass 
+                return_set = self.visit(ctx.getChild(1))
+                if return_set['meta'] == ExprType.CONST_EXPR: 
+                    raise SemanticError(msg=f"Const value {ctx.getChild(1).getText()} can not get an address", ctx=ctx)
+                return {
+                    'value': return_set['value'], 
+                    'meta': ExprType.CONST_EXPR
+                }
             elif mark == CLexer.SIZEOF: 
                 # TODO 增加对于sizeof函数的支持
                 pass
