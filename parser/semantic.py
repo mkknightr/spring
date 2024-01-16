@@ -179,14 +179,20 @@ class semanticVisitor(CParserVisitor):
             (eval_expr) ( COMMA eval_expr)*; 
 
         """
+        llvmBuiler = self.Builders[-1]
         if ctx.getChildCount() == 1: 
             return self.visitChildren(ctx)
         else:
             actual_args_list = [] 
             for i in range(ctx.getChildCount()): 
                 i_child = ctx.getChild(i)
-                if isinstance(i_child, CParser.Eval_exprContext): 
-                    actual_args_list.append(self.visit(i_child))
+                if isinstance(i_child, CParser.Eval_exprContext):
+                    return_set = self.visit(i_child)
+                    if type(return_set) is dict:
+                        llvmValue = llvmBuiler.load(return_set['value'])  
+                        actual_args_list.append(llvmValue)
+                    else: 
+                        actual_args_list.append(return_set)
             return actual_args_list
 
 
@@ -235,34 +241,46 @@ class semanticVisitor(CParserVisitor):
         var_type = self.visit(ctx.getChild(0))
         if ctx.getChild(1).getText() != "*":
             var_id = ctx.getChild(1).getText() 
-            if self.m_symblol_table.InGlobalScope(): 
-                llvmVar = ir.GlobalVariable(self.Module, var_type, name=var_id)
-                llvmVar.linkage = 'internal'
-            else: 
-                llvmBuiler = self.Builders[-1] 
-                llvmVar = llvmBuiler.alloca(var_type, name=var_id)
-            symbolVar = {} 
-            symbolVar["type"] = var_type
-            symbolVar["name"] = llvmVar
-            add_item_result = self.m_symblol_table.AddItem(var_id, symbolVar)
-            if add_item_result != "ok": 
-                raise SemanticError(msg=f"failed to add variable {var_id} to symbol table")
-            if ctx.getChildCount() < 3: 
-                return llvmVar
-            if ctx.getChild(2).getText() == "=":
-                var_value = self.visit(ctx.getChild(3))
-                if self.m_symblol_table.InGlobalScope():
-                    llvmVar.initializer = ir.Constant(var_value['type'], var_value['name'].constant)
+            if ctx.getChildCount() < 3 or ctx.getChild(2).getText() == "=" : 
+                if self.m_symblol_table.InGlobalScope(): 
+                    llvmVar = ir.GlobalVariable(self.Module, var_type, name=var_id)
+                    llvmVar.linkage = 'internal'
                 else: 
-                    # TODO 在这里后续可以拓展关于强制类型转换的内容
-                    if var_type != var_value.type:
-                        raise SemanticError(msg=f"varibale type mismatches in assignment statement",ctx=ctx)
+                    llvmBuiler = self.Builders[-1] 
+                    llvmVar = llvmBuiler.alloca(var_type, name=var_id)
+                symbolVar = {} 
+                symbolVar["type"] = var_type
+                symbolVar["name"] = llvmVar
+                add_item_result = self.m_symblol_table.AddItem(var_id, symbolVar)
+                if add_item_result != "ok": 
+                    raise SemanticError(msg=f"failed to add variable {var_id} to symbol table")
+                if ctx.getChildCount() < 3: 
+                    return llvmVar
+                elif ctx.getChild(2).getText() == "=":
+                    var_value = self.visit(ctx.getChild(3))
+                    if self.m_symblol_table.InGlobalScope():
+                        llvmVar.initializer = ir.Constant(var_value['type'], var_value['name'].constant)
                     else: 
-                        llvmBuiler.store(var_value, llvmVar)
-                return 
+                        # TODO 在这里后续可以拓展关于强制类型转换的内容
+                        if var_type != var_value.type:
+                            raise SemanticError(msg=f"varibale type mismatches in assignment statement",ctx=ctx)
+                        else: 
+                            llvmBuiler.store(var_value, llvmVar)
+                            return
+                else: 
+                    raise SemanticError(msg=f"Unexpected error", ctx=ctx)     
             elif ctx.getChild(2).getText() == "[": 
-                #TODO 在这里可以拓展初始化数组变量 目前暂时并不支持
-                pass
+                    array_size = int(ctx.getChild(3).getText())
+                    array_type = ir.ArrayType(int32_t, array_size)
+                    llvmBuiler = self.Builders[-1]
+                    llvmVar = llvmBuiler.alloca(array_type, name="array")
+                    symbolVar = {} 
+                    symbolVar["type"] = array_type
+                    symbolVar["name"] = llvmVar
+                    add_item_result = self.m_symblol_table.AddItem(var_id, symbolVar)
+                    if add_item_result != "ok": 
+                        raise SemanticError(msg=f"failed to add variable {var_id} to symbol table")
+                    return llvmVar
             else: 
                 raise SemanticError(msg=Configuration.ERROR_UPEXPECTED, ctx=ctx) 
         else: 
@@ -288,7 +306,11 @@ class semanticVisitor(CParserVisitor):
             llvmValue = llvmBuiler.load(llvmVar['name'])
             llvmBuiler.store(var_value, llvmValue)
         else: 
-            raise SemanticError(msg=f"Cannot detect definition for variable {ptr_id} or {var_id}", ctx=ctx)
+            return_set = self.visit(ctx.getChild(0))
+            if return_set['flag'] == "array": 
+                llvmBuiler.store(var_value, return_set['value'])
+            else: 
+                raise SemanticError(msg=f"Cannot detect definition for variable {ptr_id} or {var_id}", ctx=ctx)
         return var_value
 
 
@@ -589,8 +611,24 @@ class semanticVisitor(CParserVisitor):
         else: 
             mark = ctx.getChild(0).getSymbol().type
             if mark == CLexer.ID: 
-                # TODO 在这里处理函数调用表达式和数组下标表达式
-                pass 
+                var_id = ctx.getChild(0).getText()
+                type_mark = ctx.getChild(1).getText()
+                if type_mark == "[": # 说明这一个表达式访问的是数组的值
+                    index = self.visit(ctx.getChild(2))
+                    if self.m_symblol_table.exist(var_id):
+                        llvmVar = self.m_symblol_table.GetItem(var_id)
+                        llvmBuiler = self.Builders[-1]
+                        llvmvalue = llvmBuiler.gep(llvmVar['name'], [ir.Constant(int32_t, 0), index], inbounds=True)
+                        return {
+                            'value': llvmvalue, 
+                            'flag': "array", 
+                            } 
+                    else: 
+                        raise SemanticError(msg=f"undefined array {var_id}", ctx=ctx)
+                elif type_mark == "(": # 说明这是一个函数调用语句
+                    pass 
+                else: 
+                    raise SemanticError(msg=f"Undefined error type {type_mark} in expr", ctx=ctx)
             elif mark == CLexer.SELF_INC:
                 # TODO 测试之外
                 return None
