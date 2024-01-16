@@ -159,9 +159,13 @@ class semanticVisitor(CParserVisitor):
             i_child = ctx.getChild(i)
             if isinstance(i_child, CParser.Var_typeContext): 
                 i_type = self.visit(i_child)
-                if ctx.getChild(i + 1).getText() == "*": 
+                if (i + 1) < child_count and ctx.getChild(i + 1).getText() == "*": 
                     i_id = ctx.getChild(i + 2).getText()
                     params_list.append({'type': i_type.as_pointer(), 'name': i_id})
+                    i += 2
+                elif (i + 2) < child_count and ctx.getChild(i + 2).getText() == "[":
+                    i_id = ctx.getChild(i + 1).getText()
+                    params_list.append({"type": ir.types.ArrayType(i_type, 1000), 'name': i_id})
                     i += 2
                 else: 
                     i_id = ctx.getChild(i + 1).getText()
@@ -273,17 +277,17 @@ class semanticVisitor(CParserVisitor):
                 else: 
                     raise SemanticError(msg=f"Unexpected error", ctx=ctx)     
             elif ctx.getChild(2).getText() == "[": 
-                    array_size = int(ctx.getChild(3).getText())
-                    array_type = ir.ArrayType(int32_t, array_size)
-                    llvmBuiler = self.Builders[-1]
-                    llvmVar = llvmBuiler.alloca(array_type, name=f"{var_id}.array")
-                    symbolVar = {} 
-                    symbolVar["type"] = array_type
-                    symbolVar["name"] = llvmVar
-                    add_item_result = self.m_symblol_table.AddItem(var_id, symbolVar)
-                    if add_item_result != "ok": 
-                        raise SemanticError(msg=f"failed to add variable {var_id} to symbol table")
-                    return
+                array_size = int(ctx.getChild(3).getText())
+                array_type = ir.ArrayType(var_type, array_size)
+                llvmBuiler = self.Builders[-1]
+                llvmVar = llvmBuiler.alloca(array_type, name=f"{var_id}.array")
+                symbolVar = {} 
+                symbolVar["type"] = array_type
+                symbolVar["name"] = llvmVar
+                add_item_result = self.m_symblol_table.AddItem(var_id, symbolVar)
+                if add_item_result != "ok": 
+                    raise SemanticError(msg=f"failed to add variable {var_id} to symbol table")
+                return
             else: 
                 raise SemanticError(msg=Configuration.ERROR_UPEXPECTED, ctx=ctx) 
         else: 

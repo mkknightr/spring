@@ -2,11 +2,11 @@
 .DS_Store
 */settings.json
 */note*
-__pycache__/
+*/__pycache__/
 .vscode/
-*/.ll
+*/*.ll
 AST.json
-parser/test/**
-test/
+*/test/
 *.out
 runtest.py
+parser/test/t7.c

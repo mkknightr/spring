@@ -12,14 +12,14 @@
 
 
 
-void printArray(int* arr, int i) {
-    printf("%d \n ", arr[i]);
+void printArray(int arr[], int i) {
+    printf("%d \n", arr[i]);
     return;
 }
 
 int main() 
 { 
-    int a[10];
+    int a[1000];
     a[0] = 1;
     a[1] = 0; 
     a[2] = 3; 
@@ -27,7 +27,7 @@ int main()
     a[5] = 5; 
     a[6] = 7; 
     a[8] = 0; 
-    printf("I am going to print some elements of array a "); 
+    printf("I am going to print some elements of array a \n"); 
     printArray(a, 0); 
     printArray(a, 1); 
     printArray(a, 2); 
