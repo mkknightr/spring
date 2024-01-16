@@ -3,7 +3,7 @@ from CLexer import CLexer
 from CParser import CParser
 from semantic import semanticVisitor
 import sys 
-CFile = "./test/ifProg.c"
+CFile = "./test/forProg.c"
 
 
 

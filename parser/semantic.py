@@ -349,7 +349,7 @@ class semanticVisitor(CParserVisitor):
             else: 
                 raise SemanticError(msg=f"Undefined function {function_name}", ctx=ctx); 
 
-    # todo Visit a parse tree produced by CParser#condition_statm.
+    # Visit a parse tree produced by CParser#condition_statm.
     def visitCondition_statm(self, ctx:CParser.Condition_statmContext):
         print("---- VISIT Condition_statm ----")
         """
@@ -547,9 +547,56 @@ class semanticVisitor(CParserVisitor):
         LBRACE
             statement*
         RBRACE
-        TODO: 这里需要做的事情还算是比较多的 
         """
-        return self.visitChildren(ctx)
+        # ! 假设三个语句都存在
+        self.m_symblol_table.EnterScope() 
+        
+
+        
+        llvmBuiler = self.Builders[-1]
+        condition_block = llvmBuiler.append_basic_block()
+        for_body_block = llvmBuiler.append_basic_block()
+        end_block = llvmBuiler.append_basic_block()
+
+
+        # 原block
+        
+        self.visit(ctx.getChild(2))
+        llvmBuiler.branch(condition_block)
+
+        # condition block
+        self.Blocks.pop()
+        self.Builders.pop()
+        self.Blocks.append(condition_block)
+        self.Builders.append(ir.IRBuilder(condition_block))
+        llvmBuiler = self.Builders[-1]
+
+        cond_result = self.visit(ctx.getChild(4))
+        llvmBuiler.cbranch(cond_result, for_body_block, end_block)
+
+
+        # for body block
+        self.Blocks.pop()
+        self.Builders.pop()
+        self.Blocks.append(for_body_block)
+        self.Builders.append(ir.IRBuilder(for_body_block))
+        llvmBuiler = self.Builders[-1]
+
+        for i in range(9, ctx.getChildCount()):  # 注意只处理if里面的statement
+            if isinstance(ctx.getChild(i), CParser.StatementContext):
+                self.visit(ctx.getChild(i))
+        self.visit(ctx.getChild(6))
+        llvmBuiler.branch(condition_block)
+
+        # end block
+        self.Blocks.pop()
+        self.Builders.pop()
+        self.Blocks.append(end_block)
+        self.Builders.append(ir.IRBuilder(end_block))
+
+
+        self.m_symblol_table.QuitScope()
+        return 
 
 
     # Visit a parse tree produced by CParser#arith_statm.
