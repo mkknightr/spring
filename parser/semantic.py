@@ -349,7 +349,7 @@ class semanticVisitor(CParserVisitor):
 
     # Visit a parse tree produced by CParser#condition_statm.
     def visitCondition_statm(self, ctx:CParser.Condition_statmContext):
-        print("---- VISIT Condition_statm ----") 
+        print("---- VISIT Condition_statm ----")
         """
         condition_statm : 
             IF LPAREN ( eval_expr ) RPAREN 
@@ -358,36 +358,133 @@ class semanticVisitor(CParserVisitor):
                 LBRACE statement* RBRACE 
             )*
             ( ELSE LBRACE statement* RBRACE )?
-        TODO: 这里算是比较困惑的地方，
         """
-        #增加两个block，对应If分支和If结束后的分支
-        llvmBuiler = self.Builders[-1]
-        if_block = llvmBuiler.append_basic_block()
-        end_if_block = llvmBuiler.append_basic_block()
-        llvmBuiler.branch(if_block)
 
-        #载入IfBlock
+        
+    
+        
+        num_of_else_if = 0
+        pos_of_else_if_evalstmt = []
+        has_else = False
+
+        # 首先判断有多少个else if， 然后判断有没有else
+        for i in range(0, ctx.getChildCount()-1):
+            leftChild = ctx.getChild(i)
+            rightChild = ctx.getChild(i+1)
+            if leftChild.getText() == "else" and rightChild.getText() == "if":
+                num_of_else_if += 1
+                pos_of_else_if_evalstmt.append(i + 3)
+                print("[debug] catch else if")
+            elif leftChild.getText() == "else" and not rightChild.getText() == "if":
+                has_else = True
+                print("[debug] catch else")
+
+
+        parse_child_count = 0
+
+        self.m_symblol_table.EnterScope()
+        llvmBuilder = self.Builders[-1]
+
+        if_body_block = llvmBuilder.append_basic_block()  # 条件为真执行的语句块
+        else_if_body_block = [] # else if为真语句块
+        for i in range(0, num_of_else_if):
+            else_if_body_block.append(llvmBuilder.append_basic_block())
+        else_body_block = llvmBuilder.append_basic_block() if has_else else None  # else 执行语句
+        end_block = llvmBuilder.append_basic_block()  # 最终结束块
+        
+        
+        # 分支判断
+
+        
+        else_if_blocks = [llvmBuilder.append_basic_block(f"else_if_{i}") for i in range(num_of_else_if)]
+
+        # 处理 if判断
+        condition_result = self.visit(ctx.getChild(2))  # eval_expr 的结果
+        llvmBuilder.cbranch(condition_result, if_body_block, else_if_blocks[0] if num_of_else_if > 0 else (else_body_block if has_else else end_block))
+        
+        # 处理else if判断
+        for i in range(num_of_else_if):
+            self.Blocks.pop()
+            self.Builders.pop()
+
+            self.Blocks.append(else_if_blocks[i])
+            self.Builders.append(ir.IRBuilder(else_if_blocks[i]))
+
+            llvmBuilder = self.Builders[-1]
+
+            e_condition_result = self.visit(ctx.getChild(pos_of_else_if_evalstmt[i]))
+            next_block = else_if_blocks[i + 1] if i + 1 < num_of_else_if else (else_body_block if has_else else end_block)
+            llvmBuilder.cbranch(e_condition_result, else_if_body_block[i], next_block)
+
+            
+
+
+
+        # 进入 if 语句块
         self.Blocks.pop()
         self.Builders.pop()
-        self.Blocks.append(if_block)
-        self.Builders.append(ir.IRBuilder(if_block))
+        self.Blocks.append(if_body_block)
+        self.Builders.append(ir.IRBuilder(if_body_block))
+        
+        for i in range(parse_child_count, ctx.getChildCount()):  # 注意只处理if里面的statement
+            if ctx.getChild(i).getText() == "}":
+                parse_child_count = i + 1
+                break
 
-        tmp = self.EndifBlock # 这个是用来做什么的呢？ 很不好理解
-        self.EndifBlock = end_if_block
-        Length = ctx.getChildCount()
-        for i in range(Length):
-            self.visit(ctx.getChild(i))  #分别处理每个if ,elseif, else块
-        self.EndifBlock = tmp
+            if isinstance(ctx.getChild(i), CParser.StatementContext):
+                self.visit(ctx.getChild(i))
 
-        #结束后导向EndIf块
-        blockTemp = self.Blocks.pop()
-        builderTemp = self.Builders.pop()
-        if not blockTemp.is_terminated:
-            builderTemp.branch(EndifBlock)
+        self.Builders[-1].branch(end_block)  # 跳转到最终结束块
 
-        self.Blocks.append(EndifBlock)
-        self.Builders.append(ir.IRBuilder(EndifBlock))
+
+        # 处理 else if 语句块
+        for i, elif_body_block in enumerate(else_if_body_block):
+                
+            self.Blocks.pop()
+            self.Builders.pop()
+            self.Blocks.append(elif_body_block)
+            self.Builders.append(ir.IRBuilder(elif_body_block))
+
+            for i in range(parse_child_count, ctx.getChildCount()):  # 注意只处理if里面的statement
+                if ctx.getChild(i).getText() == "}":
+                    parse_child_count = i + 1
+                    break
+
+                if isinstance(ctx.getChild(i), CParser.StatementContext):
+                    self.visit(ctx.getChild(i))
+
+            self.Builders[-1].branch(end_block)  # 跳转到最终结束块
+
+
+        # 处理else 语句块
+        if has_else:
+            self.Blocks.pop()
+            self.Builders.pop()
+            self.Blocks.append(else_body_block)
+            self.Builders.append(ir.IRBuilder(else_body_block))
+
+            for i in range(parse_child_count, ctx.getChildCount()): 
+                if ctx.getChild(i).getText() == "}":
+                    parse_child_count = i + 1
+                    break
+
+                if isinstance(ctx.getChild(i), CParser.StatementContext):
+                    self.visit(ctx.getChild(i))
+
+            self.Builders[-1].branch(end_block)  # 跳转到最终结束块
+
+
+        # 结束块
+        self.Blocks.pop()
+        self.Builders.pop()
+        self.Blocks.append(end_block)
+        self.Builders.append(ir.IRBuilder(end_block))
+
+        self.m_symblol_table.QuitScope()
+
         return
+
+        
 
 
     # Visit a parse tree produced by CParser#while_statm.
@@ -448,9 +545,56 @@ class semanticVisitor(CParserVisitor):
         LBRACE
             statement*
         RBRACE
-        TODO: 这里需要做的事情还算是比较多的 
         """
-        return self.visitChildren(ctx)
+        # ! 假设三个语句都存在
+        self.m_symblol_table.EnterScope() 
+        
+
+        
+        llvmBuiler = self.Builders[-1]
+        condition_block = llvmBuiler.append_basic_block()
+        for_body_block = llvmBuiler.append_basic_block()
+        end_block = llvmBuiler.append_basic_block()
+
+
+        # 原block
+        
+        self.visit(ctx.getChild(2))
+        llvmBuiler.branch(condition_block)
+
+        # condition block
+        self.Blocks.pop()
+        self.Builders.pop()
+        self.Blocks.append(condition_block)
+        self.Builders.append(ir.IRBuilder(condition_block))
+        llvmBuiler = self.Builders[-1]
+
+        cond_result = self.visit(ctx.getChild(4))
+        llvmBuiler.cbranch(cond_result, for_body_block, end_block)
+
+
+        # for body block
+        self.Blocks.pop()
+        self.Builders.pop()
+        self.Blocks.append(for_body_block)
+        self.Builders.append(ir.IRBuilder(for_body_block))
+        llvmBuiler = self.Builders[-1]
+
+        for i in range(9, ctx.getChildCount()):  # 注意只处理if里面的statement
+            if isinstance(ctx.getChild(i), CParser.StatementContext):
+                self.visit(ctx.getChild(i))
+        self.visit(ctx.getChild(6))
+        llvmBuiler.branch(condition_block)
+
+        # end block
+        self.Blocks.pop()
+        self.Builders.pop()
+        self.Blocks.append(end_block)
+        self.Builders.append(ir.IRBuilder(end_block))
+
+
+        self.m_symblol_table.QuitScope()
+        return 
 
 
     # Visit a parse tree produced by CParser#arith_statm.
