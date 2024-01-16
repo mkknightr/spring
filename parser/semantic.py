@@ -68,17 +68,21 @@ class semanticVisitor(CParserVisitor):
         return_type = self.visit(ctx.getChild(0))
         if return_type == "": 
             raise SemanticError(ctx=ctx, msg="Unexpedted function type error") 
+        
         # get the function name  
         function_name = ctx.getChild(1).getText()
+
         # get the function formal arguments  
         if ctx.getChild(3).getText() != ")":
             formal_arguments = self.visit(ctx.getChild(3))
         else: 
             formal_arguments = [] 
+            
         # get the function arguments type list   
         args_type_list = [] 
         for i in range(len(formal_arguments)):
             args_type_list.append(formal_arguments[i]['type'])
+
         # create the function type according to return value type and args type list 
         llvmFunctionType = ir.FunctionType(return_type, args_type_list)
         # bind the function with module and name 
@@ -88,6 +92,7 @@ class semanticVisitor(CParserVisitor):
         for i in range(len(formal_arguments)): 
             llvmFunction.args[i].name = formal_arguments[i]['name']
         
+
         # 开始构建函数体
         functionBlock = llvmFunction.append_basic_block(name=function_name + '.entry') 
         if function_name in self.Functions: 
@@ -270,6 +275,8 @@ class semanticVisitor(CParserVisitor):
         """
         assign_statm : eval_expr ASSIGN ( eval_expr );
         """
+        # ! 这里的eval_expr可能是一个变量名 a = ..., 或者是一个数组下标a[1] 或者是&a[2]等。
+        # todo 添加处理更多的赋值号左边的情况
         llvmBuiler = self.Builders[-1]
         var_id = ctx.getChild(0).getText() 
         if self.m_symblol_table.exist(var_id): 
