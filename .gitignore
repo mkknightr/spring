@@ -4,7 +4,7 @@
 */note*
 __pycache__/
 .vscode/
-*.ll
+*/.ll
 AST.json
-test/
+parser/test/**
 *.out
