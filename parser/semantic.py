@@ -180,20 +180,22 @@ class semanticVisitor(CParserVisitor):
 
         """
         llvmBuiler = self.Builders[-1]
-        if ctx.getChildCount() == 1: 
-            return self.visitChildren(ctx)
-        else:
-            actual_args_list = [] 
-            for i in range(ctx.getChildCount()): 
-                i_child = ctx.getChild(i)
-                if isinstance(i_child, CParser.Eval_exprContext):
-                    return_set = self.visit(i_child)
-                    if type(return_set) is dict:
-                        llvmValue = llvmBuiler.load(return_set['value'])  
-                        actual_args_list.append(llvmValue)
-                    else: 
-                        actual_args_list.append(return_set)
-            return actual_args_list
+        actual_args_list = [] 
+        for i in range(ctx.getChildCount()): 
+            i_child = ctx.getChild(i)
+            if isinstance(i_child, CParser.Eval_exprContext):
+                return_set = self.visit(i_child)
+                if type(return_set) is dict:
+                    llvmValue = llvmBuiler.load(return_set['value'])  
+                    actual_args_list.append(llvmValue)
+                elif return_set.type == int8_t.as_pointer(): 
+                    actual_args_list.append(return_set)
+                elif return_set.type == int32_t:
+                    actual_args_list.append(return_set) 
+                else: 
+                    actual_args_list.append(llvmBuiler.bitcast(return_set, int32_t.as_pointer()))
+
+        return actual_args_list
 
 
     # Visit a parse tree produced by CParser#statement.
@@ -491,7 +493,7 @@ class semanticVisitor(CParserVisitor):
             ir_string.global_constant = True
             ir_string.initializer = ir.Constant(ir.ArrayType(int8_t,  len(normalized_string)),
                                     bytearray(normalized_string, 'utf-8'))
-            ir_string_ptr = self.Builders[-1].bitcast(ir_string, ir.IntType(8).as_pointer())
+            ir_string_ptr = self.Builders[-1].bitcast(ir_string, int8_t.as_pointer())
             return ir_string_ptr
         elif const_type == CLexer.FLOAT: 
             return ir.Constant(float_t, float(ctx.getText()))
@@ -618,7 +620,7 @@ class semanticVisitor(CParserVisitor):
                     if self.m_symblol_table.exist(var_id):
                         llvmVar = self.m_symblol_table.GetItem(var_id)
                         llvmBuiler = self.Builders[-1]
-                        llvmvalue = llvmBuiler.gep(llvmVar['name'], [ir.Constant(int32_t, 0), index], inbounds=True)
+                        llvmvalue = llvmBuiler.gep(llvmVar['name'], [ir.Constant(int32_t, 0), ir.Constant(int32_t, index)])
                         return {
                             'value': llvmvalue, 
                             'flag': "array", 
