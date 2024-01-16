@@ -414,17 +414,18 @@ class semanticVisitor(CParserVisitor):
         self.Builders.pop()
         self.Blocks.append(while_statm_condition)
         self.Builders.append(ir.IRBuilder(while_statm_condition))
-
+        
+        # ! 注意eval的返回形式
         condition_result = self.visit(ctx.getChild(2))
-        self.Builders[-1].cbranch(condition_result['name'], while_statm_body, while_statm_end)
+        self.Builders[-1].cbranch(condition_result, while_statm_body, while_statm_end)
 
         self.Blocks.pop()
         self.Builders.pop()
         self.Blocks.append(while_statm_body)
         self.Builders.append(ir.IRBuilder(while_statm_body))
         
-        for i in range(len(ctx.getChildCount())): 
-            if isinstance(ctx.getChild(i), CParser.statement): 
+        for i in range(ctx.getChildCount()): 
+            if isinstance(ctx.getChild(i), CParser.StatementContext): 
                 self.visit(ctx.getChild(i)) 
 
         #执行body后重新判断condition
@@ -435,7 +436,7 @@ class semanticVisitor(CParserVisitor):
         self.Builders.pop()
         self.Blocks.append(while_statm_end)
         self.Builders.append(ir.IRBuilder(while_statm_end))
-        self.SymbolTable.QuitScope()
+        self.m_symblol_table.QuitScope()
         
         return
 
@@ -470,6 +471,11 @@ class semanticVisitor(CParserVisitor):
         对涉及到的表达式进行对应的计算
         这里的语法规则和eval_expr的语法规则可能稍微有点重复了 具体内容类似
         """
+
+
+
+
+
         return self.visitChildren(ctx)
 
 
