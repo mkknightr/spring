@@ -3,7 +3,7 @@ from CLexer import CLexer
 from CParser import CParser
 from semantic import semanticVisitor
 import sys 
-CFile = "/Users/kni/projects/spring/parser/test/hello.c"
+CFile = "/Users/kni/projects/spring/parser/test/t3.c"
 
 
 
