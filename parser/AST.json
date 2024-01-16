@@ -33,6 +33,51 @@
           "type": "StatementContext",
           "children": [
             {
+              "type": "Declare_var_statmContext",
+              "children": [
+                {
+                  "type": "Var_typeContext",
+                  "children": [
+                    {
+                      "type": "Terminal",
+                      "text": "int"
+                    }
+                  ]
+                },
+                {
+                  "type": "Terminal",
+                  "text": "item"
+                },
+                {
+                  "type": "Terminal",
+                  "text": "="
+                },
+                {
+                  "type": "Eval_exprContext",
+                  "children": [
+                    {
+                      "type": "Const_valContext",
+                      "children": [
+                        {
+                          "type": "Terminal",
+                          "text": "10"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Terminal",
+              "text": ";"
+            }
+          ]
+        },
+        {
+          "type": "StatementContext",
+          "children": [
+            {
               "type": "Call_func_statmContext",
               "children": [
                 {
@@ -65,6 +110,51 @@
                 {
                   "type": "Terminal",
                   "text": ")"
+                }
+              ]
+            },
+            {
+              "type": "Terminal",
+              "text": ";"
+            }
+          ]
+        },
+        {
+          "type": "StatementContext",
+          "children": [
+            {
+              "type": "Declare_var_statmContext",
+              "children": [
+                {
+                  "type": "Var_typeContext",
+                  "children": [
+                    {
+                      "type": "Terminal",
+                      "text": "char"
+                    }
+                  ]
+                },
+                {
+                  "type": "Terminal",
+                  "text": "itemm"
+                },
+                {
+                  "type": "Terminal",
+                  "text": "="
+                },
+                {
+                  "type": "Eval_exprContext",
+                  "children": [
+                    {
+                      "type": "Const_valContext",
+                      "children": [
+                        {
+                          "type": "Terminal",
+                          "text": "'c'"
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             },

@@ -18,7 +18,6 @@ def lexerize(filePath):
     print("="*60) 
 
     for token in token_stream.tokens:
-        token_type = token.type
         print("{:<10} {:<20} {:<15} {:<15}".format(
             CLexer.symbolicNames[token.type], 
             token.text, 

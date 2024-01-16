@@ -124,7 +124,7 @@ eval_expr : ID LBRACK eval_expr RBRACK                      // array[a+b]
     |   eval_expr LESS eval_expr                            // a < c
     |   eval_expr LESS_EQUAL eval_expr                      // a <= c 
     |   eval_expr EQUAL eval_expr                           // a == b
-    |   eval_expr NOT_EQUAL eval_expr                       // a != builtin_oper
+    |   eval_expr NOT_EQUAL eval_expr                       // a != b uiltin_oper
 
     |   eval_expr OP_AND eval_expr                          // a & b, a ^ b, a | b
     |   eval_expr OP_XOR eval_expr
