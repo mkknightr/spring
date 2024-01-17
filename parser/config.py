@@ -19,3 +19,4 @@ class ExprType:
     ID_EXPR = 1
     ARRAY_ITEM_EXPR = 2
     VAR_EXPR = 3
+    ARRAY_POINTER = 4
