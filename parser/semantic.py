@@ -169,15 +169,8 @@ class semanticVisitor(CParserVisitor):
                 if (i + 1) < child_count and ctx.getChild(i + 1).getText() == "*": 
                     i_id = ctx.getChild(i + 2).getText()
                     params_list.append({'type': i_type.as_pointer(), 'name': i_id})
-<<<<<<< Updated upstream
                     i += 2
                 elif (i + 2) < child_count and ctx.getChild(i + 2).getText() == "[":
-=======
-                    i += 3  # Skip past the "*" and ID to the next element
-
-                # Check for array type
-                elif (i + 2) < length  and ctx.getChild(i + 2).getText() == "[":
->>>>>>> Stashed changes
                     i_id = ctx.getChild(i + 1).getText()
                     params_list.append({"type": ir.types.ArrayType(i_type, 1000), 'name': i_id})
                     i += 2
@@ -910,34 +903,11 @@ class semanticVisitor(CParserVisitor):
                         index_value = llvmBuiler.load(return_value)
                     if self.m_symblol_table.exist(var_id):
                         llvmVar = self.m_symblol_table.GetItem(var_id)
-<<<<<<< Updated upstream
                         llvmvalue = llvmBuiler.gep(llvmVar['name'], [ir.Constant(int32_t, 0), index_value])
                         return {
                             'value': llvmvalue, 
                             'meta': ExprType.ARRAY_ITEM_EXPR, 
                             } 
-=======
-                        llvmVarType = llvmVar['type']
-                        
-                        # Check if llvmVar is a pointer type, especially an int32* type
-                        if isinstance(llvmVarType, ir.PointerType):
-                            llvmValue = llvmVar['name']  # 这是指向数组首地址的指针
-
-                            # 如果 index_value 不是常量表达式，则从内存中加载其值
-                            if return_set['meta'] != ExprType.CONST_EXPR and return_set['meta'] != ExprType.VAR_EXPR:
-                                print('[debug] the type is')
-                                print(return_set['meta'])
-                                index_value = llvmBuiler.load(index_value)
-
-                            # 使用 gep 指令计算偏移后的地址
-                            element_ptr = llvmBuiler.gep(llvmValue, [index_value], inbounds=True)
-
-                            # 返回计算出的指向偏移后的地址的指针
-                            return {
-                                'value': element_ptr,  # 这是一个指向特定索引元素的指针
-                                'meta': ExprType.ARRAY_ITEM_EXPR,
-                            }
->>>>>>> Stashed changes
                     else: 
                         raise SemanticError(msg=f"undefined array {var_id}", ctx=ctx)
                 elif type_mark == "(": # 说明这是一个函数调用语句
