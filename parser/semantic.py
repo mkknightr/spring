@@ -216,7 +216,7 @@ class semanticVisitor(CParserVisitor):
             i_child = ctx.getChild(i)
             if isinstance(i_child, CParser.Eval_exprContext):
                 return_set = self.visit(i_child)
-                if return_set['meta'] == ExprType.CONST_EXPR: 
+                if return_set['meta'] == ExprType.CONST_EXPR or return_set['meta'] == ExprType.ARRAY_POINTER: 
                     actual_args_list.append(return_set['value'])
                 else: 
                     value = llvmBuiler.load(return_set['value'])
@@ -773,7 +773,7 @@ class semanticVisitor(CParserVisitor):
 
     # Visit a parse tree produced by CParser#eval_expr.
     def visitEval_expr(self, ctx:CParser.Eval_exprContext):
-        print("---- VISIT Eval_expr ----") 
+        print("---- VISIT Eval_expr ----")
         """
         具值表达式类型
         """
@@ -782,18 +782,32 @@ class semanticVisitor(CParserVisitor):
             if isinstance(child, CParser.Const_valContext): # 如果是常量值
                 return self.visit(child)
             elif child.getSymbol().type == CLexer.ID: # 如果是变量值
-                llvmBuiler = self.Builders[-1]
+                llvmBuilder = self.Builders[-1]
                 var_id = child.getText()
-                if self.m_symblol_table.exist(var_id): 
+                if self.m_symblol_table.exist(var_id):
                     llvmVar = self.m_symblol_table.GetItem(var_id)
-                else: 
+                    llvmVarType = llvmVar['type']
+                    # 检查变量是否为数组类型
+                    if isinstance(llvmVarType, ir.ArrayType):
+                        print("[debug] is array")
+                        # 获取数组首元素地址
+                        zero_index = ir.Constant(ir.IntType(32), 0)
+                        pointer_to_first_element = llvmBuilder.gep(llvmVar['name'], [zero_index, zero_index])
+                        return {
+                            'value': pointer_to_first_element,
+                            'meta': ExprType.ARRAY_POINTER
+                        }
+                    else:
+                        # 不是数组类型，直接返回变量地址
+                        return {
+                            'value': llvmVar['name'],
+                            'meta': ExprType.ID_EXPR
+                        }
+                else:
                     raise SemanticError(msg=f"variable Undefined {var_id}", ctx=ctx)
-                return { 
-                    'value': llvmVar['name'], 
-                    'meta': ExprType.ID_EXPR
-                }
-            else: 
+            else:
                 raise SemanticError(msg=f"Unexpected error when trying to evaluate expr {child.getText()}", ctx=ctx)
+
 
         if isinstance(ctx.getChild(0), CParser.Eval_exprContext): # 如果以表达式开头 
             if ctx.getChildCount() == 2: # 只有两个元素 说明是以表达式开头的自增或自减
@@ -909,17 +923,30 @@ class semanticVisitor(CParserVisitor):
                     else: 
                         index_value = llvmBuiler.load(return_value)
                     if self.m_symblol_table.exist(var_id):
-                        print("[debug] here")
                         llvmVar = self.m_symblol_table.GetItem(var_id)
-                        print(llvmVar['name'])
-                        print("[debug]")
-                        llvmvalue = llvmBuiler.gep(llvmVar['name'], [ir.Constant(int32_t, 0), index_value])
+                        llvmVarType = llvmVar['type']
+                        
+                        # Check if llvmVar is a pointer type, especially an int32* type
+                        if isinstance(llvmVarType, ir.PointerType) and isinstance(llvmVarType.pointee, ir.IntType) and llvmVarType.pointee.width == 32:
+                            # llvmVar['name'] is already an int32* type pointer, no extra operation needed
+                            llvmvalue_ptr = llvmVar['name']
+                            llvmValue = llvmBuiler.load(llvmvalue_ptr)
+                            print('[debug] is int32*')
+                        else:
+                            # llvmVar['name'] is not an int32* type pointer, we need to use gep to get the correct address
+                            llvmvalue_ptr = llvmBuiler.gep(llvmVar['name'], [ir.Constant(int32_t, 0), index_value])
+                            llvmValue = llvmvalue_ptr
+                            print('[debug] is array type')
+
+                        # Load the actual value from the pointer
+                        # llvmvalue = llvmBuiler.load(llvmvalue_ptr)
                         return {
-                            'value': llvmvalue, 
-                            'meta': ExprType.ARRAY_ITEM_EXPR, 
-                            } 
+                            'value': llvmValue, 
+                            'meta': ExprType.VAR_EXPR,  # VAR_EXPR since we're returning a variable's value, not a pointer
+                        }
                     else: 
                         raise SemanticError(msg=f"undefined array {var_id}", ctx=ctx)
+
                 elif type_mark == "(": # 说明这是一个函数调用语句
                     if var_id in self.Functions:
                         llvmFunction = self.Functions[var_id]
