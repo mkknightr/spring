@@ -20,6 +20,7 @@ void_t = ir.VoidType()
 
 # function type setup 
 printf_function_type = ir.FunctionType(int32_t, [int8_t.as_pointer()], var_arg=True)
+scanf_function_type = ir.FunctionType(int32_t, [int8_t.as_pointer()], var_arg=True)
 
 class semanticVisitor(CParserVisitor): 
 
@@ -338,7 +339,18 @@ class semanticVisitor(CParserVisitor):
                 return f"call function statement called printf function"
             else: 
                 raise SemanticError(msg="printf function calling should have argument at least one", ctx=ctx)
-        # TODO: 这里可以增加更多的库函数调用如scanf, strlen等等
+        elif ctx.getChild(0).getText() == "scanf": 
+            if 'scanf' in self.Functions: 
+                scanf = self.Functions['scanf']
+            else: 
+                scanf = ir.Function(self.Module, scanf_function_type, name="scanf")
+                self.Functions['scanf'] = scanf
+            if ctx.getChild(2).getText() != ")": 
+                args_list = self.visit(ctx.getChild(2))
+                self.Builders[-1].call(scanf, args_list)
+                return f"scanf function "
+            else: 
+                raise SemanticError(msg="scanf function calling should have at least two argument", ctx=ctx)
         else:
             function_name = ctx.getChild(0).getText()
             if function_name in self.Functions: 
@@ -404,7 +416,7 @@ class semanticVisitor(CParserVisitor):
 
         # 处理 if判断
         condition_result = self.visit(ctx.getChild(2))  # eval_expr 的结果
-        llvmBuilder.cbranch(condition_result, if_body_block, else_if_blocks[0] if num_of_else_if > 0 else (else_body_block if has_else else end_block))
+        llvmBuilder.cbranch(condition_result['value'], if_body_block, else_if_blocks[0] if num_of_else_if > 0 else (else_body_block if has_else else end_block))
         
         # 处理else if判断
         for i in range(num_of_else_if):
@@ -514,7 +526,7 @@ class semanticVisitor(CParserVisitor):
         
         # ! 注意eval的返回形式
         condition_result = self.visit(ctx.getChild(2))
-        self.Builders[-1].cbranch(condition_result, while_statm_body, while_statm_end)
+        self.Builders[-1].cbranch(condition_result['value'], while_statm_body, while_statm_end)
 
         self.Blocks.pop()
         self.Builders.pop()
