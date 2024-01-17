@@ -5,7 +5,7 @@ from semantic import semanticVisitor
 import sys 
 import os,sys
 os.chdir(sys.path[0]) #使用文件所在目录
-CFile = "./test/t14.c"
+CFile = "./test/bubbleSort.c"
 
 
 

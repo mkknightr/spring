@@ -169,8 +169,15 @@ class semanticVisitor(CParserVisitor):
                 if (i + 1) < child_count and ctx.getChild(i + 1).getText() == "*": 
                     i_id = ctx.getChild(i + 2).getText()
                     params_list.append({'type': i_type.as_pointer(), 'name': i_id})
+<<<<<<< Updated upstream
                     i += 2
                 elif (i + 2) < child_count and ctx.getChild(i + 2).getText() == "[":
+=======
+                    i += 3  # Skip past the "*" and ID to the next element
+
+                # Check for array type
+                elif (i + 2) < length  and ctx.getChild(i + 2).getText() == "[":
+>>>>>>> Stashed changes
                     i_id = ctx.getChild(i + 1).getText()
                     params_list.append({"type": ir.types.ArrayType(i_type, 1000), 'name': i_id})
                     i += 2
@@ -231,10 +238,23 @@ class semanticVisitor(CParserVisitor):
         self.m_symblol_table.display()
         if ctx.getChildCount() == 1: 
             self.Builders[-1].ret_void()
+            # # 添加新块
+            # new_block = self.Builders[-1].append_basic_block() 
+            # self.Blocks.pop()
+            # self.Builders.pop()
+
+            # self.Blocks.append(new_block)
+            # self.Builders.append(ir.IRBuilder(new_block))
             return f"function {self.m_cur_function} return void "
         else: 
             return_value = self.visit(ctx.getChild(1))
             self.Builders[-1].ret(return_value['value'])
+            # new_block = self.Builders[-1].append_basic_block() 
+            # self.Blocks.pop()
+            # self.Builders.pop()
+
+            # self.Blocks.append(new_block)
+            # self.Builders.append(ir.IRBuilder(new_block))
             return f"function {self.m_cur_function} return {return_value}"
 
     # Visit a parse tree produced by CParser#declare_var_statm.
@@ -375,15 +395,15 @@ class semanticVisitor(CParserVisitor):
                 llvmFunction = ir.Function(self.Module, c_library_function_type_list[function_name], name=function_name)
                 self.Functions[function_name] = llvmFunction
             if ctx.getChild(2).getText() != ")": 
-                if function_name == "gets": 
-                    child = ctx.getChild(2)
-                    if child.getChildCount() != 1 : 
-                        raise SemanticError(msg=f"gets now accepts only one argument not {child.getChildCount()}", ctx=ctx)
-                    return_set = self.visit(child.getChild(0))
-                    ptr = self.Builders[-1].gep(return_set['value'], [ir.Constant(int32_t, 0), ir.Constant(int32_t, 0)], name="array_ptr")
-                    args_list = [ptr]
-                else: 
-                    args_list = self.visit(ctx.getChild(2))
+                # if function_name == "gets": 
+                #     child = ctx.getChild(2)
+                #     if child.getChildCount() != 1 : 
+                #         raise SemanticError(msg=f"gets now accepts only one argument not {child.getChildCount()}", ctx=ctx)
+                #     return_set = self.visit(child.getChild(0))
+                #     ptr = self.Builders[-1].gep(return_set['value'], [ir.Constant(int32_t, 0), ir.Constant(int32_t, 0)], name="array_ptr")
+                #     args_list = [ptr]
+                # else: 
+                args_list = self.visit(ctx.getChild(2))
                 self.Builders[-1].call(llvmFunction, args_list)
                 return f"call function statement called c_library function"
         else:
@@ -890,11 +910,34 @@ class semanticVisitor(CParserVisitor):
                         index_value = llvmBuiler.load(return_value)
                     if self.m_symblol_table.exist(var_id):
                         llvmVar = self.m_symblol_table.GetItem(var_id)
+<<<<<<< Updated upstream
                         llvmvalue = llvmBuiler.gep(llvmVar['name'], [ir.Constant(int32_t, 0), index_value])
                         return {
                             'value': llvmvalue, 
                             'meta': ExprType.ARRAY_ITEM_EXPR, 
                             } 
+=======
+                        llvmVarType = llvmVar['type']
+                        
+                        # Check if llvmVar is a pointer type, especially an int32* type
+                        if isinstance(llvmVarType, ir.PointerType):
+                            llvmValue = llvmVar['name']  # 这是指向数组首地址的指针
+
+                            # 如果 index_value 不是常量表达式，则从内存中加载其值
+                            if return_set['meta'] != ExprType.CONST_EXPR and return_set['meta'] != ExprType.VAR_EXPR:
+                                print('[debug] the type is')
+                                print(return_set['meta'])
+                                index_value = llvmBuiler.load(index_value)
+
+                            # 使用 gep 指令计算偏移后的地址
+                            element_ptr = llvmBuiler.gep(llvmValue, [index_value], inbounds=True)
+
+                            # 返回计算出的指向偏移后的地址的指针
+                            return {
+                                'value': element_ptr,  # 这是一个指向特定索引元素的指针
+                                'meta': ExprType.ARRAY_ITEM_EXPR,
+                            }
+>>>>>>> Stashed changes
                     else: 
                         raise SemanticError(msg=f"undefined array {var_id}", ctx=ctx)
                 elif type_mark == "(": # 说明这是一个函数调用语句
@@ -908,10 +951,10 @@ class semanticVisitor(CParserVisitor):
                         child = ctx.getChild(2)
                         if child.getChildCount() != 1 : 
                             raise SemanticError(msg=f"strlen now accepts only one argument not {child.getChildCount()}", ctx=ctx)
-                        return_set = self.visit(child.getChild(0))
-                        ptr = llvmBuiler.gep(return_set['value'], [ir.Constant(int32_t, 0), ir.Constant(int32_t, 0)], name="array_ptr")
+                        args_list = self.visit(ctx.getChild(2))
+                        
                         return {
-                            'value': self.Builders[-1].call(llvmFunction, [ptr]), 
+                            'value': self.Builders[-1].call(llvmFunction, args_list), 
                             'meta': ExprType.CONST_EXPR
                         }
                     else: 
