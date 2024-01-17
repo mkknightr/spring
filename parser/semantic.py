@@ -416,7 +416,7 @@ class semanticVisitor(CParserVisitor):
 
         # 处理 if判断
         condition_result = self.visit(ctx.getChild(2))  # eval_expr 的结果
-        llvmBuilder.cbranch(condition_result['value'], if_body_block, else_if_blocks[0] if num_of_else_if > 0 else (else_body_block if has_else else end_block))
+        self.Builders[-1].cbranch(condition_result['value'], if_body_block, else_if_blocks[0] if num_of_else_if > 0 else (else_body_block if has_else else end_block))
         
         # 处理else if判断
         for i in range(num_of_else_if):
@@ -426,11 +426,10 @@ class semanticVisitor(CParserVisitor):
             self.Blocks.append(else_if_blocks[i])
             self.Builders.append(ir.IRBuilder(else_if_blocks[i]))
 
-            llvmBuilder = self.Builders[-1]
 
             e_condition_result = self.visit(ctx.getChild(pos_of_else_if_evalstmt[i]))
             next_block = else_if_blocks[i + 1] if i + 1 < num_of_else_if else (else_body_block if has_else else end_block)
-            llvmBuilder.cbranch(e_condition_result, else_if_body_block[i], next_block)
+            self.Builders[-1].cbranch(e_condition_result, else_if_body_block[i], next_block)
 
             
 
@@ -583,10 +582,9 @@ class semanticVisitor(CParserVisitor):
         self.Builders.pop()
         self.Blocks.append(condition_block)
         self.Builders.append(ir.IRBuilder(condition_block))
-        llvmBuiler = self.Builders[-1]
 
         cond_result = self.visit(ctx.getChild(4))
-        llvmBuiler.cbranch(cond_result, for_body_block, end_block)
+        self.Builders[-1].cbranch(cond_result, for_body_block, end_block)
 
 
         # for body block
@@ -594,13 +592,12 @@ class semanticVisitor(CParserVisitor):
         self.Builders.pop()
         self.Blocks.append(for_body_block)
         self.Builders.append(ir.IRBuilder(for_body_block))
-        llvmBuiler = self.Builders[-1]
 
         for i in range(9, ctx.getChildCount()):  # 注意只处理if里面的statement
             if isinstance(ctx.getChild(i), CParser.StatementContext):
                 self.visit(ctx.getChild(i))
         self.visit(ctx.getChild(6))
-        llvmBuiler.branch(condition_block)
+        self.Builders[-1].branch(condition_block)
 
         # end block
         self.Blocks.pop()
