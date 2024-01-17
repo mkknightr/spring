@@ -427,7 +427,7 @@ class semanticVisitor(CParserVisitor):
             self.Builders.append(ir.IRBuilder(else_if_blocks[i]))
 
 
-            e_condition_result = self.visit(ctx.getChild(pos_of_else_if_evalstmt[i]))
+            e_condition_result = self.visit(ctx.getChild(pos_of_else_if_evalstmt[i]))['value']
             next_block = else_if_blocks[i + 1] if i + 1 < num_of_else_if else (else_body_block if has_else else end_block)
             self.Builders[-1].cbranch(e_condition_result, else_if_body_block[i], next_block)
 
@@ -584,7 +584,7 @@ class semanticVisitor(CParserVisitor):
         self.Builders.append(ir.IRBuilder(condition_block))
 
         cond_result = self.visit(ctx.getChild(4))
-        self.Builders[-1].cbranch(cond_result, for_body_block, end_block)
+        self.Builders[-1].cbranch(cond_result['value'], for_body_block, end_block)
 
 
         # for body block
