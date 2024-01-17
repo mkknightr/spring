@@ -20,28 +20,31 @@ int isPalindrome(char str[]) {
 int main() {
     char str[1005];
 
-    printf("Please input a string: (string.length <= 1000)");
+    printf("Please input a string: (string.length <= 1000): \n\n");
     gets(str);
     int len; 
     int i; 
     len = strlen(str);
 
-    // replace the last \n to \0 
-    if (str[strlen(str) - 1] == '\n') {
-        str[strlen(str) - 1] = '\0';
+    int left = 0; 
+    int right = len - 1; 
+    int flag = 1; 
+
+    while (left < right)
+    {
+        if (str[left] != str[right]) 
+        {
+            flag = 0; 
+        }
+        left = left + 1; 
+        right = right - 1; 
+    }
+    if (flag == 1) { 
+        printf("\n\n ok palindrom!\n\n"); 
+    }
+    else{
+        printf("\n\n no NOT palindrom! \n\n"); 
     }
 
-    int IsPLD = -1;
-	for (i = 0; i + i < len && IsPLD != 1; i = i + 1) 
-	{
-		if (str[len - 1 - i] != str[i]) 
-		{
-            printf("NOT palindrom! \n");
-            IsPLD = 1;
-        }
-	}
-    if (IsPLD != 1) {
-        printf("palindrom! \n");
-    }
     return 0;
 }
