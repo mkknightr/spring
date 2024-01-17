@@ -416,7 +416,7 @@ class semanticVisitor(CParserVisitor):
 
         # 处理 if判断
         condition_result = self.visit(ctx.getChild(2))  # eval_expr 的结果
-        llvmBuilder.cbranch(condition_result, if_body_block, else_if_blocks[0] if num_of_else_if > 0 else (else_body_block if has_else else end_block))
+        llvmBuilder.cbranch(condition_result['value'], if_body_block, else_if_blocks[0] if num_of_else_if > 0 else (else_body_block if has_else else end_block))
         
         # 处理else if判断
         for i in range(num_of_else_if):
@@ -526,7 +526,7 @@ class semanticVisitor(CParserVisitor):
         
         # ! 注意eval的返回形式
         condition_result = self.visit(ctx.getChild(2))
-        self.Builders[-1].cbranch(condition_result, while_statm_body, while_statm_end)
+        self.Builders[-1].cbranch(condition_result['value'], while_statm_body, while_statm_end)
 
         self.Blocks.pop()
         self.Builders.pop()
