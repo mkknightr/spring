@@ -24,6 +24,8 @@ c_library_function_type_list['printf'] = ir.FunctionType(int32_t, [int8_t.as_poi
 c_library_function_type_list['scanf'] =  ir.FunctionType(int32_t, [int8_t.as_pointer()], var_arg=True)
 c_library_function_type_list['strlen'] = ir.FunctionType(int32_t, [int8_t.as_pointer()])
 c_library_function_type_list['fgets'] = ir.FunctionType(int8_t.as_pointer(), [int8_t.as_pointer(), int32_t, int8_t.as_pointer()])
+c_library_function_type_list['gets'] = ir.FunctionType(int8_t.as_pointer(), [int8_t.as_pointer()])
+
 
 
 class semanticVisitor(CParserVisitor): 
@@ -309,7 +311,7 @@ class semanticVisitor(CParserVisitor):
         llvmBuiler = self.Builders[-1]
         left = self.visit(ctx.getChild(0))
         right = self.visit(ctx.getChild(2))
-        if right['meta'] == ExprType.CONST_EXPR or right['meta'] == ExprType.VAR_EXPR: 
+        if right['meta'] == ExprType.CONST_EXPR:
             right_value = right['value'] 
         else: 
             right_value = llvmBuiler.load(right['value'])
@@ -338,7 +340,15 @@ class semanticVisitor(CParserVisitor):
                 llvmFunction = ir.Function(self.Module, c_library_function_type_list[function_name], name=function_name)
                 self.Functions[function_name] = llvmFunction
             if ctx.getChild(2).getText() != ")": 
-                args_list = self.visit(ctx.getChild(2))
+                if function_name == "gets": 
+                    child = ctx.getChild(2)
+                    if child.getChildCount() != 1 : 
+                        raise SemanticError(msg=f"gets now accepts only one argument not {child.getChildCount()}", ctx=ctx)
+                    return_set = self.visit(child.getChild(0))
+                    ptr = self.Builders[-1].gep(return_set['value'], [ir.Constant(int32_t, 0), ir.Constant(int32_t, 0)], name="array_ptr")
+                    args_list = [ptr]
+                else: 
+                    args_list = self.visit(ctx.getChild(2))
                 self.Builders[-1].call(llvmFunction, args_list)
                 return f"call function statement called c_library function"
         else:
@@ -835,10 +845,10 @@ class semanticVisitor(CParserVisitor):
             if mark == CLexer.ID: 
                 var_id = ctx.getChild(0).getText()
                 type_mark = ctx.getChild(1).getText()
+                llvmBuiler = self.Builders[-1]
                 if type_mark == "[": # 说明这一个表达式访问的是数组的值
                     return_set = self.visit(ctx.getChild(2))
                     return_value = return_set['value']
-                    llvmBuiler = self.Builders[-1]
                     if return_set['meta'] == ExprType.CONST_EXPR: 
                         index_value = return_value
                     else: 
@@ -853,8 +863,24 @@ class semanticVisitor(CParserVisitor):
                     else: 
                         raise SemanticError(msg=f"undefined array {var_id}", ctx=ctx)
                 elif type_mark == "(": # 说明这是一个函数调用语句
-
-                    pass 
+                    if var_id in self.Functions:
+                        llvmFunction = self.Functions[var_id]
+                    else:
+                        strlen_type = ir.FunctionType(int32_t, [int8_t.as_pointer()])
+                        llvmFunction = ir.Function(self.Module, strlen_type, name="strlen")
+                        self.Functions[var_id] = llvmFunction
+                    if ctx.getChild(2).getText() != ")": 
+                        child = ctx.getChild(2)
+                        if child.getChildCount() != 1 : 
+                            raise SemanticError(msg=f"strlen now accepts only one argument not {child.getChildCount()}", ctx=ctx)
+                        return_set = self.visit(child.getChild(0))
+                        ptr = llvmBuiler.gep(return_set['value'], [ir.Constant(int32_t, 0), ir.Constant(int32_t, 0)], name="array_ptr")
+                        return {
+                            'value': self.Builders[-1].call(llvmFunction, [ptr]), 
+                            'meta': ExprType.CONST_EXPR
+                        }
+                    else: 
+                        raise SemanticError(msg=f"strlen function calling should have at least one argument ", ctx=ctx) 
                 else: 
                     raise SemanticError(msg=f"Undefined error type {type_mark} in expr", ctx=ctx)
             elif mark == CLexer.SELF_INC or mark == CLexer.SELF_DEC:
