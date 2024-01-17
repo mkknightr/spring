@@ -3,7 +3,9 @@ from CLexer import CLexer
 from CParser import CParser
 from semantic import semanticVisitor
 import sys 
-CFile = "./test/forProg.c"
+import os,sys
+os.chdir(sys.path[0]) #使用文件所在目录
+CFile = "./test/t11.c"
 
 
 

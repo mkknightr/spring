@@ -19,8 +19,12 @@ void_t = ir.VoidType()
 
 
 # function type setup 
-printf_function_type = ir.FunctionType(int32_t, [int8_t.as_pointer()], var_arg=True)
-scanf_function_type = ir.FunctionType(int32_t, [int8_t.as_pointer()], var_arg=True)
+c_library_function_type_list = {}
+c_library_function_type_list['printf'] = ir.FunctionType(int32_t, [int8_t.as_pointer()], var_arg=True)
+c_library_function_type_list['scanf'] =  ir.FunctionType(int32_t, [int8_t.as_pointer()], var_arg=True)
+c_library_function_type_list['strlen'] = ir.FunctionType(int32_t, [int8_t.as_pointer()])
+c_library_function_type_list['fgets'] = ir.FunctionType(int8_t.as_pointer(), [int8_t.as_pointer(), int32_t, int8_t.as_pointer()])
+
 
 class semanticVisitor(CParserVisitor): 
 
@@ -324,35 +328,20 @@ class semanticVisitor(CParserVisitor):
         call_func_statm : ID LPAREN ( actual_args? ) RPAREN;
         【期待】actual_args的visitor节点返回参数列表
         【返回】返回函数调用的返回值
-        TODO: 这里可以增加更多的库函数调用
         """
         self.m_symblol_table.display() 
-        if ctx.getChild(0).getText() == "printf": 
-            if 'printf' in self.Functions: 
-                printf = self.Functions['printf']
-            else:   
-                printf = ir.Function(self.Module, printf_function_type, name="printf")
-                self.Functions['printf'] = printf 
+        function_name = ctx.getChild(0).getText()
+        if c_library_function_type_list.get(function_name, None) is not None:
+            if function_name in self.Functions:
+                llvmFunction = self.Functions[function_name]
+            else:
+                llvmFunction = ir.Function(self.Module, c_library_function_type_list[function_name], name=function_name)
+                self.Functions[function_name] = llvmFunction
             if ctx.getChild(2).getText() != ")": 
                 args_list = self.visit(ctx.getChild(2))
-                self.Builders[-1].call(printf, args_list)
-                return f"call function statement called printf function"
-            else: 
-                raise SemanticError(msg="printf function calling should have argument at least one", ctx=ctx)
-        elif ctx.getChild(0).getText() == "scanf": 
-            if 'scanf' in self.Functions: 
-                scanf = self.Functions['scanf']
-            else: 
-                scanf = ir.Function(self.Module, scanf_function_type, name="scanf")
-                self.Functions['scanf'] = scanf
-            if ctx.getChild(2).getText() != ")": 
-                args_list = self.visit(ctx.getChild(2))
-                self.Builders[-1].call(scanf, args_list)
-                return f"scanf function "
-            else: 
-                raise SemanticError(msg="scanf function calling should have at least two argument", ctx=ctx)
+                self.Builders[-1].call(llvmFunction, args_list)
+                return f"call function statement called c_library function"
         else:
-            function_name = ctx.getChild(0).getText()
             if function_name in self.Functions: 
                 llvmFunction = self.Functions[function_name]
                 parameter_list = []
@@ -360,7 +349,7 @@ class semanticVisitor(CParserVisitor):
                     parameter_list = self.visit(ctx.getChild(2))
                 llvmReturnValue = self.Builders[-1].call(llvmFunction, parameter_list)
                 return llvmReturnValue
-            else: 
+            else:
                 raise SemanticError(msg=f"Undefined function {function_name}", ctx=ctx); 
 
     # Visit a parse tree produced by CParser#condition_statm.
@@ -427,7 +416,7 @@ class semanticVisitor(CParserVisitor):
             self.Builders.append(ir.IRBuilder(else_if_blocks[i]))
 
 
-            e_condition_result = self.visit(ctx.getChild(pos_of_else_if_evalstmt[i]))
+            e_condition_result = self.visit(ctx.getChild(pos_of_else_if_evalstmt[i]))['value']
             next_block = else_if_blocks[i + 1] if i + 1 < num_of_else_if else (else_body_block if has_else else end_block)
             self.Builders[-1].cbranch(e_condition_result, else_if_body_block[i], next_block)
 
@@ -584,7 +573,7 @@ class semanticVisitor(CParserVisitor):
         self.Builders.append(ir.IRBuilder(condition_block))
 
         cond_result = self.visit(ctx.getChild(4))
-        self.Builders[-1].cbranch(cond_result, for_body_block, end_block)
+        self.Builders[-1].cbranch(cond_result['value'], for_body_block, end_block)
 
 
         # for body block
