@@ -305,7 +305,7 @@ class semanticVisitor(CParserVisitor):
         llvmBuiler = self.Builders[-1]
         left = self.visit(ctx.getChild(0))
         right = self.visit(ctx.getChild(2))
-        if right['meta'] == ExprType.CONST_EXPR or right['meta'] == ExprType.VAR_EXPR: 
+        if right['meta'] == ExprType.CONST_EXPR:
             right_value = right['value'] 
         else: 
             right_value = llvmBuiler.load(right['value'])
