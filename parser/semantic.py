@@ -618,17 +618,55 @@ class semanticVisitor(CParserVisitor):
         eval_expr SELF_DEC | 
         SELF_INC eval_expr | 
         SELF_DEC eval_expr | 
-        eval_expr SHL eval_expr |   
-        eval_expr SHR eval_expr
-        对涉及到的表达式进行对应的计算
-        这里的语法规则和eval_expr的语法规则可能稍微有点重复了 具体内容类似
         """
+        firstChild = ctx.getChild(0)
+        if isinstance(firstChild, CParser.Eval_exprContext):
+            return_set = self.visit(ctx.getChild(0))
+            if return_set['meta'] != ExprType.ID_EXPR and return_set['meta'] != ExprType.ARRAY_ITEM_EXPR:
+                raise SemanticError(msg=f"Only ID or Array item can be inc. or dec. {ctx.getChild(0).getText()} Can not")
+            return_value = return_set['value']
+            llvmBuilder = self.Builders[-1]
+            llvmValue = llvmBuilder.load(return_value)
+            operator = ctx.getChild(1).getSymbol().type
+            if operator == CLexer.SELF_INC: 
+                llvmNewValue = llvmBuilder.add(llvmValue, ir.Constant(ir.IntType(32), 1))
+            elif operator == CLexer.SELF_DEC: 
+                llvmNewValue = llvmBuilder.sub(llvmValue, ir.Constant(ir.IntType(32), 1))
+            else: 
+                raise SemanticError(msg=f"Undefined operator {operator}", ctx=ctx)
+            llvmBuilder.store(llvmNewValue, return_value)
+            return { 
+            'value': llvmValue, 
+            'meta': ExprType.CONST_EXPR # 或者其他适合的类型，反映变量或数组项
+            }
+
+        elif firstChild.getText() == '++' or firstChild.getText() == '--':
+            return_set = self.visit(ctx.getChild(1))
+            if return_set['meta'] != ExprType.ID_EXPR and return_set['meta'] != ExprType.ARRAY_ITEM_EXPR:
+                raise SemanticError(msg=f"Only ID or Array item can be inc. or dec. {ctx.getChild(0).getText()} Can not")
+            return_value = return_set['value']
+            llvmBuiler = self.Builders[-1]
+            llvmValue = llvmBuiler.load(return_value)
+            operator = ctx.getChild(0).getSymbol().type
+            if operator == CLexer.SELF_INC: 
+                llvmNewValue = llvmBuiler.add(llvmValue, ir.Constant(int32_t, 1))
+            elif operator == CLexer.SELF_DEC: 
+                llvmNewValue = llvmBuiler.sub(llvmValue, ir.Constant(int32_t, 1))
+            else: 
+                raise SemanticError(msg=f"Undefined operator {operator}", ctx=ctx)
+
+            # 将新值存储回变量
+            llvmBuiler.store(llvmNewValue, return_value)
+
+            # 返回新值
+            return {
+                'value': llvmNewValue,
+                'meta': ExprType.CONST_EXPR  # 或者其他适合的类型
+            }
+        else:
+            return 
 
 
-
-
-
-        return self.visitChildren(ctx)
 
 
     # Visit a parse tree produced by CParser#const_val.
@@ -710,21 +748,21 @@ class semanticVisitor(CParserVisitor):
                 if return_set['meta'] != ExprType.ID_EXPR and return_set['meta'] != ExprType.ARRAY_ITEM_EXPR:
                     raise SemanticError(msg=f"Only ID or Array item can be inc. or dec. {ctx.getChild(0).getText()} Can not")
                 return_value = return_set['value']
-                llvmBuiler = self.Builders[-1]
-                llvmValue = llvmBuiler.load(return_value)
+                llvmBuilder = self.Builders[-1]
+                llvmValue = llvmBuilder.load(return_value)
                 operator = ctx.getChild(1).getSymbol().type
                 if operator == CLexer.SELF_INC: 
-                    llvmNewValue = llvmBuiler.add(llvmValue, ir.Constant(int32_t, 1))
+                    llvmNewValue = llvmBuilder.add(llvmValue, ir.Constant(ir.IntType(32), 1))
                 elif operator == CLexer.SELF_DEC: 
-                    llvmNewValue = llvmBuiler.sub(llvmValue, ir.Constant(int32_t, 1))
+                    llvmNewValue = llvmBuilder.sub(llvmValue, ir.Constant(ir.IntType(32), 1))
                 else: 
                     raise SemanticError(msg=f"Undefined operator {operator}", ctx=ctx)
-                llvmBuiler.store(llvmNewValue, return_value)
+                llvmBuilder.store(llvmNewValue, return_value)
                 return { 
-                    'value': ir.Constant(return_value.pointee, llvmValue), 
-                    'meta': ExprType.CONST_EXPR
+                'value': llvmValue, 
+                'meta': ExprType.CONST_EXPR # 或者其他适合的类型，反映变量或数组项
                 }
-            
+                
 
             if isinstance(ctx.getChild(2), CParser.Eval_exprContext): # 如果是二元表达式
                 return_set1 = self.visit(ctx.getChild(0))
@@ -845,11 +883,29 @@ class semanticVisitor(CParserVisitor):
                         raise SemanticError(msg=f"strlen function calling should have at least one argument ", ctx=ctx) 
                 else: 
                     raise SemanticError(msg=f"Undefined error type {type_mark} in expr", ctx=ctx)
-            elif mark == CLexer.SELF_INC:
-                # TODO 测试之外
-                return None
-            elif mark == CLexer.SELF_DEC: 
-                # TODO 测试之外
+            elif mark == CLexer.SELF_INC or mark == CLexer.SELF_DEC:
+                return_set = self.visit(ctx.getChild(1))
+                if return_set['meta'] != ExprType.ID_EXPR and return_set['meta'] != ExprType.ARRAY_ITEM_EXPR:
+                    raise SemanticError(msg=f"Only ID or Array item can be inc. or dec. {ctx.getChild(0).getText()} Can not")
+                return_value = return_set['value']
+                llvmBuiler = self.Builders[-1]
+                llvmValue = llvmBuiler.load(return_value)
+                operator = ctx.getChild(0).getSymbol().type
+                if operator == CLexer.SELF_INC: 
+                    llvmNewValue = llvmBuiler.add(llvmValue, ir.Constant(int32_t, 1))
+                elif operator == CLexer.SELF_DEC: 
+                    llvmNewValue = llvmBuiler.sub(llvmValue, ir.Constant(int32_t, 1))
+                else: 
+                    raise SemanticError(msg=f"Undefined operator {operator}", ctx=ctx)
+
+                # 将新值存储回变量
+                llvmBuiler.store(llvmNewValue, return_value)
+
+                # 返回新值
+                return {
+                    'value': llvmNewValue,
+                    'meta': ExprType.CONST_EXPR  # 或者其他适合的类型
+                }
                 return None
             elif mark == CLexer.NOT: 
                 # TODO 测试之外
