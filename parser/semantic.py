@@ -297,8 +297,43 @@ class semanticVisitor(CParserVisitor):
                 return
             else: 
                 raise SemanticError(msg=Configuration.ERROR_UPEXPECTED, ctx=ctx) 
-        else: 
-            # TODO 在这里后续可以拓展关于指针类型的内容，目前暂时不支持
+                # ...
+        else:
+            # Declare a pointer type variable
+            pointer_type = ir.PointerType(var_type)  # Create a pointer to var_type
+            var_id = ctx.getChild(2).getText()  # Get the variable name
+            llvmBuilder = self.Builders[-1]
+            llvmVar = llvmBuilder.alloca(pointer_type, name=var_id)  # Allocate the pointer variable
+
+            symbolVar = {
+                "type": pointer_type,
+                "name": llvmVar
+            }
+            add_item_result = self.m_symblol_table.AddItem(var_id, symbolVar)
+            if add_item_result != "ok":
+                raise SemanticError(msg=f"failed to add variable {var_id} to symbol table")
+
+            if ctx.getChildCount() == 3:
+                # Only declaration, no further action needed
+                return
+            elif ctx.getChildCount() == 5 and ctx.getChild(3).getText() == "=":
+                # Declaration with initialization
+                return_set = self.visit(ctx.getChild(4))  # Visit the initialization expression
+                return_value = return_set['value']
+                if return_set['meta'] == ExprType.CONST_EXPR or return_set['meta'] == ExprType.VAR_EXPR: 
+                    value = return_value
+                else: 
+                    value = llvmBuilder.load(return_value)
+
+                if var_type != value.type.pointee:
+                    raise SemanticError(msg=f"variable type mismatches in assignment statement", ctx=ctx)
+                else: 
+                    llvmBuilder.store(value, llvmVar)  # Store the value in the pointer variable
+                return
+            else: 
+                raise SemanticError(msg=f"Unexpected error", ctx=ctx)
+
+
             pass
         return 
 
