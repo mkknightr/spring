@@ -867,7 +867,7 @@ class semanticVisitor(CParserVisitor):
                         llvmFunction = self.Functions[var_id]
                     else:
                         strlen_type = ir.FunctionType(int32_t, [int8_t.as_pointer()])
-                        llvmFunction = ir.Function(self.Module, strlen_type, name="strlen_in_expr")
+                        llvmFunction = ir.Function(self.Module, strlen_type, name="strlen")
                         self.Functions[var_id] = llvmFunction
                     if ctx.getChild(2).getText() != ")": 
                         child = ctx.getChild(2)
