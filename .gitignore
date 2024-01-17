@@ -10,3 +10,4 @@ AST.json
 *.out
 runtest.py
 parser/test/t7.c
+*.pyc
