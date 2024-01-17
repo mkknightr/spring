@@ -152,34 +152,54 @@ class semanticVisitor(CParserVisitor):
 
     # Visit a parse tree produced by CParser#formal_args.
     def visitFormal_args(self, ctx:CParser.Formal_argsContext):
-        print("---- VISIT Formal_args ----") 
+        print("---- VISIT Formal_args ----")
         """
         formal_args : 
             (var_type (MULTIPLY)? ID ( LBRACK (INT)? RBRACK)? ) 
             (COMMA var_type (MULTIPLY)? ID ( LBRACK (INT)? RBRACK)? )*;
         
-        TODO: 这里还需要增加对【指针类型】和【数组类型】的支持
+        Support for pointer and array types is also added in this implementation.
         """
         params_list = []
-        child_count = ctx.getChildCount() 
-        for i in range(child_count): 
+        i = 0
+        length = ctx.getChildCount()
+        while i < length:
             i_child = ctx.getChild(i)
-            if isinstance(i_child, CParser.Var_typeContext): 
+            if isinstance(i_child, CParser.Var_typeContext):
                 i_type = self.visit(i_child)
-                if (i + 1) < child_count and ctx.getChild(i + 1).getText() == "*": 
+                next_symbol = ctx.getChild(i + 1).getText()
+                
+                # Check for pointer type
+                if next_symbol == "*":
                     i_id = ctx.getChild(i + 2).getText()
                     params_list.append({'type': i_type.as_pointer(), 'name': i_id})
-                    i += 2
-                elif (i + 2) < child_count and ctx.getChild(i + 2).getText() == "[":
+                    i += 3  # Skip past the "*" and ID to the next element
+
+                # Check for array type
+                elif ctx.getChild(i + 2).getText() == "[":
                     i_id = ctx.getChild(i + 1).getText()
-                    params_list.append({"type": ir.types.ArrayType(i_type, 1000), 'name': i_id})
-                    i += 2
-                else: 
+                    # 函数参数中的数组实际上是指针
+                    array_pointer_type = i_type.as_pointer()
+                    params_list.append({'type': array_pointer_type, 'name': i_id})
+                    print("[debug] meet array type")
+                    # 找到与当前数组声明匹配的"]"，跳过数组大小部分
+                    while ctx.getChild(i).getText() != "]":
+                        i += 1
+                    i += 1  # 跳过"]"到下一个元素
+
+                
+                # Regular variable type
+                else:
                     i_id = ctx.getChild(i + 1).getText()
                     params_list.append({'type': i_type, 'name': i_id})
-                    i+= 1
+                    i += 2  # Skip past the ID to the next element
+
+            else:
+                i += 1
+
         print(params_list)
         return params_list
+
 
 
     # Visit a parse tree produced by CParser#actual_args.
@@ -889,7 +909,10 @@ class semanticVisitor(CParserVisitor):
                     else: 
                         index_value = llvmBuiler.load(return_value)
                     if self.m_symblol_table.exist(var_id):
+                        print("[debug] here")
                         llvmVar = self.m_symblol_table.GetItem(var_id)
+                        print(llvmVar['name'])
+                        print("[debug]")
                         llvmvalue = llvmBuiler.gep(llvmVar['name'], [ir.Constant(int32_t, 0), index_value])
                         return {
                             'value': llvmvalue, 
